@@ -32,7 +32,7 @@ public final class AsyncQueue: Sendable {
         let taskStream = AsyncStream<@Sendable () async -> Void> { continuation in
             capturedTaskStreamContinuation = continuation
         }
-        guard let capturedTaskStreamContinuation = capturedTaskStreamContinuation else {
+        guard let capturedTaskStreamContinuation else {
             fatalError("Continuation not captured during stream creation!")
         }
         taskStreamContinuation = capturedTaskStreamContinuation
