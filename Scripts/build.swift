@@ -159,7 +159,8 @@ for rawPlatform in rawPlatforms {
         "-scheme", "swift-async-queue",
         "-sdk", platform.sdk,
         "-derivedDataPath", platform.derivedDataPath,
-        "-PBXBuildsContinueAfterErrors=0"
+        "-PBXBuildsContinueAfterErrors=0",
+        "OTHER_SWIFT_FLAGS=-warnings-as-errors",
     ]
 
     if !platform.destination.isEmpty {
