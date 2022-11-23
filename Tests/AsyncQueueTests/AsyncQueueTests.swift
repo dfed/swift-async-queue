@@ -51,11 +51,20 @@ final class AsyncQueueTests: XCTestCase {
         }
     }
 
-    func test_async_executesAsyncBlocksSeriallyAndAtomically() {
-        let unsafeCounter = UnsafeCounter()
-        for iteration in 1...1_000 {
+    func test_async_executesAsyncBlocksAtomically() {
+        let semaphore = Semaphore()
+        for _ in 1...1_000 {
             systemUnderTest.async {
-                unsafeCounter.incrementAndExpectCount(equals: iteration)
+                let isWaiting = await semaphore.isWaiting
+                // This test will fail occasionally if we aren't executing atomically.
+                // You can prove this to yourself by replacing `systemUnderTest.async` above with `Task`.
+                XCTAssertFalse(isWaiting)
+                // Signal the semaphore before or after we wait – let the scheduler decide.
+                Task {
+                    await semaphore.signal()
+                }
+                // Wait for the concurrent task to complete.
+                await semaphore.wait()
             }
         }
     }
@@ -180,18 +189,6 @@ final class AsyncQueueTests: XCTestCase {
         var count = 0
     }
 
-    // MARK: - UnsafeCounter
-
-    /// A counter that is explicitly not safe to utilize concurrently.
-    private final class UnsafeCounter: @unchecked Sendable {
-        func incrementAndExpectCount(equals expectedCount: Int) {
-            count += 1
-            XCTAssertEqual(expectedCount, count)
-        }
-
-        var count = 0
-    }
-
     // MARK: - Semaphore
 
     private actor Semaphore {
@@ -210,7 +207,7 @@ final class AsyncQueueTests: XCTestCase {
 
         func signal() {
             count += 1
-            guard count >= 0 else {
+            guard !isWaiting else {
                 // Continue waiting.
                 return
             }
@@ -220,6 +217,10 @@ final class AsyncQueueTests: XCTestCase {
             }
 
             continuations.removeAll()
+        }
+
+        var isWaiting: Bool {
+            count < 0
         }
 
         private var continuations = [CheckedContinuation<Void, Never>]()
