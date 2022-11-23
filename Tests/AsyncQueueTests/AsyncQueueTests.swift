@@ -103,6 +103,32 @@ final class AsyncQueueTests: XCTestCase {
         }
     }
 
+    func test_async_doesNotRetainTaskAfterExecution() async {
+        final class Reference: Sendable {}
+        final class ReferenceHolder: @unchecked Sendable {
+            var reference: Reference? = Reference()
+        }
+        let referenceHolder = ReferenceHolder()
+        weak var weakReference = referenceHolder.reference
+        let expectation = self.expectation(description: #function)
+        let foreverSleep = Task {
+            try await Task.sleep(nanoseconds: UInt64.max)
+        }
+        systemUnderTest.async { [reference = referenceHolder.reference] in
+            // Wait for the setup to complete.
+            try? await foreverSleep.value
+            // Retain the unsafe counter until the task is completed.
+            _ = reference
+            expectation.fulfill()
+        }
+        referenceHolder.reference = nil
+        XCTAssertNotNil(weakReference)
+        // Cancel the sleep timer to allow the enqueued task to complete.
+        foreverSleep.cancel()
+        await waitForExpectations(timeout: 1.0)
+        XCTAssertNil(weakReference)
+    }
+
     func test_await_sendsEventsInOrder() async {
         let counter = Counter()
         for iteration in 1...1_000 {
