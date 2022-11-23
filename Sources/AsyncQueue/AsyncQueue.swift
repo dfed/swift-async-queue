@@ -26,7 +26,7 @@ public final class AsyncQueue: Sendable {
     // MARK: Initialization
 
     /// Instantiates an asynchronous queue.
-    /// - Parameter priority: The priority of the tasks added to the asynchronous queue.
+    /// - Parameter priority: The baseline priority of the tasks added to the asynchronous queue.
     public init(priority: TaskPriority = .medium) {
         var capturedTaskStreamContinuation: AsyncStream<@Sendable () async -> Void>.Continuation? = nil
         let taskStream = AsyncStream<@Sendable () async -> Void> { continuation in
