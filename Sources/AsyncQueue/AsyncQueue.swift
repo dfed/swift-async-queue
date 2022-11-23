@@ -32,6 +32,9 @@ public final class AsyncQueue: Sendable {
         let taskStream = AsyncStream<@Sendable () async -> Void> { continuation in
             capturedTaskStreamContinuation = continuation
         }
+        guard let capturedTaskStreamContinuation = capturedTaskStreamContinuation else {
+            fatalError("Continuation not captured during stream creation!")
+        }
         taskStreamContinuation = capturedTaskStreamContinuation
 
         streamTask = Task.detached(priority: priority) {
@@ -85,5 +88,5 @@ public final class AsyncQueue: Sendable {
     // MARK: Private
 
     private let streamTask: Task<Void, Never>
-    private let taskStreamContinuation: AsyncStream<@Sendable () async -> Void>.Continuation!
+    private let taskStreamContinuation: AsyncStream<@Sendable () async -> Void>.Continuation
 }
