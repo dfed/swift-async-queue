@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/cocoapods/l/swift-async-queue.svg)](https://cocoapods.org/pods/swift-async-queue)
 [![Platform](https://img.shields.io/cocoapods/p/swift-async-queue.svg)](https://cocoapods.org/pods/swift-async-queue)
 
-A queue that enables ordered sending of events from synchronous to asynchronous code.
+A queue that enables sending FIFO-ordered tasks from synchronous to asynchronous contexts.
 
 ## Usage
 

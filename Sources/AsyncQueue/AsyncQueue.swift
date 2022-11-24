@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-/// A queue that enables ordered sending of events from synchronous to asynchronous code
+/// A queue that enables sending FIFO-ordered tasks from synchronous to asynchronous contexts
 public final class AsyncQueue: Sendable {
 
     // MARK: Initialization
