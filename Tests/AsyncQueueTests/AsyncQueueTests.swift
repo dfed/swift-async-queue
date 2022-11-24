@@ -93,7 +93,7 @@ final class AsyncQueueTests: XCTestCase {
             await counter.incrementAndExpectCount(equals: 1)
         }
         systemUnderTest?.async {
-            // This async task should not execute until the sleep is cancelled.
+            // This async task should not execute until the semaphore is released.
             await counter.incrementAndExpectCount(equals: 2)
             expectation.fulfill()
         }
