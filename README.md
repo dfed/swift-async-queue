@@ -5,26 +5,77 @@
 [![License](https://img.shields.io/cocoapods/l/swift-async-queue.svg)](https://cocoapods.org/pods/swift-async-queue)
 [![Platform](https://img.shields.io/cocoapods/p/swift-async-queue.svg)](https://cocoapods.org/pods/swift-async-queue)
 
-A queue that enables sending FIFO-ordered tasks from synchronous to asynchronous contexts.
+A library of queues that enables sending ordered tasks from synchronous to asynchronous contexts.
 
-## Usage
+## Task Ordering and Swift Concurrency
 
-### Basic Initialization
+Tasks sent from a synchronous context to an asynchronous context in Swift Concurrency are inherently unordered. Consider the following test:
 
-```swift
-let asyncQueue = AsyncQueue()
+```
+@MainActor
+func test_mainActor_taskOrdering() async {
+    var counter = 0
+    var tasks = [Task<Void, Never>]()
+    for iteration in 1...100 {
+        tasks.append(Task {
+            counter += 1
+            XCTAssertEqual(counter, iteration) // often fails
+        })
+    }
+    for task in tasks {
+        _ = await task.value
+    }
+}
 ```
 
-### Sending events from a synchronous context
+Despite the spawned `Task` inheriting the serial `@MainActor` execution context, the ordering of the scheduled asynchronous work is not guaranteed.
+
+While [actors](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID645) are great at serializing tasks, there is no simple way in the standard Swift library to send ordered tasks to them from a synchronous context.
+
+### Executing asynchronous tasks in FIFO order
+
+Use a `FIFOQueue` queue to execute asynchronous tasks enqueued from a nonisolated context in FIFO order. Tasks sent to one of these queues are guaranteed to begin _and end_ executing in the order in which they are enqueued.
 
 ```swift
-asyncQueue.async { /* awaitable context that executes after all other enqueued work is completed */ }
+let queue = FIFOQueue()
+queue.async {
+    /*
+    `async` context that executes after all other enqueued work is completed.
+    Work enqueued after this task will wait for this task to complete.
+    */
+}
+Task {
+    await queue.await {
+        /*
+        `async` context that can return a value or throw an error.
+        Executes after all other enqueued work is completed.
+        Work enqueued after this task will wait for this task to complete.
+        */
+    }
+}
 ```
 
-### Awaiting work from an asynchronous context
+### Sending ordered asynchronous tasks to Actors
+
+Use an `ActorQueue` queue to send ordered asynchronous tasks from a nonisolated context to an `actor` instance. Tasks sent to one of these queues are guaranteed to begin _but not end_ executing in the order in which they are enqueued.
 
 ```swift
-await asyncQueue.await { /* throw-able, return-able, awaitable context that executes after all other enqueued work is completed */ }
+let queue = ActorQueue()
+queue.async {
+    /*
+    `async` context that executes after all other enqueued work has begun executing.
+    Work enqueued after this task will wait for this task to complete or suspend.
+    */
+}
+Task {
+    await queue.await {
+        /*
+        `async` context that can return a value or throw an error.
+        Executes after all other enqueued work has completed or suspended.
+        Work enqueued after this task will wait for this task to complete or suspend.
+        */
+    }
+}
 ```
 
 ## Requirements

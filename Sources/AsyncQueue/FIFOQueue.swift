@@ -20,8 +20,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-/// A queue that enables sending FIFO-ordered tasks from synchronous to asynchronous contexts
-public final class AsyncQueue: Sendable {
+/// A queue that executes asynchronous tasks enqueued from a nonisolated context in FIFO order.
+/// Tasks are guaranteed to begin _and end_ executing in the order in which they are enqueued.
+/// Asynchronous tasks sent to this queue work as they would in a `DispatchQueue` type. Attempting to `await` this queue from a task executing on this queue will result in a deadlock.
+public final class FIFOQueue: Sendable {
 
     // MARK: Initialization
 

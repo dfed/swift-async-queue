@@ -24,14 +24,14 @@ import XCTest
 
 @testable import AsyncQueue
 
-final class AsyncQueueTests: XCTestCase {
+final class FIFOQueueTests: XCTestCase {
 
     // MARK: XCTestCase
 
     override func setUp() async throws {
         try await super.setUp()
 
-        systemUnderTest = AsyncQueue()
+        systemUnderTest = FIFOQueue()
     }
 
     // MARK: Behavior Tests
@@ -80,7 +80,7 @@ final class AsyncQueueTests: XCTestCase {
     }
 
     func test_async_retainsReceiverUntilFlushed() async {
-        var systemUnderTest: AsyncQueue? = AsyncQueue()
+        var systemUnderTest: FIFOQueue? = FIFOQueue()
         let counter = Counter()
         let expectation = self.expectation(description: #function)
         let semaphore = Semaphore()
@@ -170,58 +170,5 @@ final class AsyncQueueTests: XCTestCase {
 
     // MARK: Private
 
-    private var systemUnderTest = AsyncQueue()
-
-    // MARK: - Counter
-
-    private actor Counter {
-        func incrementAndExpectCount(equals expectedCount: Int) {
-            increment()
-            XCTAssertEqual(expectedCount, count)
-        }
-
-        func increment() {
-            count += 1
-        }
-
-        var count = 0
-    }
-
-    // MARK: - Semaphore
-
-    private actor Semaphore {
-
-        func wait() async {
-            count -= 1
-            guard count < 0 else {
-                // We don't need to wait because count is greater than or equal to zero.
-                return
-            }
-
-            await withCheckedContinuation { continuation in
-                continuations.append(continuation)
-            }
-        }
-
-        func signal() {
-            count += 1
-            guard !isWaiting else {
-                // Continue waiting.
-                return
-            }
-
-            for continuation in continuations {
-                continuation.resume()
-            }
-
-            continuations.removeAll()
-        }
-
-        var isWaiting: Bool {
-            count < 0
-        }
-
-        private var continuations = [CheckedContinuation<Void, Never>]()
-        private var count = 0
-    }
+    private var systemUnderTest = FIFOQueue()
 }
