@@ -34,24 +34,19 @@ final class AsyncQueueTests: XCTestCase {
         systemUnderTest = AsyncQueue()
     }
 
-    override func tearDown() async throws {
-        try await super.tearDown()
-
-        await systemUnderTest.await { /* Drain the queue */ }
-    }
-
     // MARK: Behavior Tests
 
-    func test_async_sendsEventsInOrder() {
+    func test_async_sendsEventsInOrder() async {
         let counter = Counter()
         for iteration in 1...1_000 {
             systemUnderTest.async {
                 await counter.incrementAndExpectCount(equals: iteration)
             }
         }
+        await systemUnderTest.await { /* Drain the queue */ }
     }
 
-    func test_async_executesAsyncBlocksAtomically() {
+    func test_async_executesAsyncBlocksAtomically() async {
         let semaphore = Semaphore()
         for _ in 1...1_000 {
             systemUnderTest.async {
@@ -67,6 +62,7 @@ final class AsyncQueueTests: XCTestCase {
                 await semaphore.wait()
             }
         }
+        await systemUnderTest.await { /* Drain the queue */ }
     }
 
     func test_async_isNotReentrant() async {
@@ -80,6 +76,7 @@ final class AsyncQueueTests: XCTestCase {
                 await counter.incrementAndExpectCount(equals: 3)
             }
         }
+        await systemUnderTest.await { /* Drain the queue */ }
     }
 
     func test_async_retainsReceiverUntilFlushed() async {
@@ -150,6 +147,7 @@ final class AsyncQueueTests: XCTestCase {
                 XCTAssertEqual(count, iteration)
             }
         }
+        await systemUnderTest.await { /* Drain the queue */ }
     }
 
     func test_await_canReturn() async {
