@@ -35,10 +35,9 @@ public final class ActorQueue: Sendable {
         let taskStream = AsyncStream<@Sendable () async -> Void> { continuation in
             capturedTaskStreamContinuation = continuation
         }
-        guard let capturedTaskStreamContinuation else {
-            fatalError("Continuation not captured during stream creation!")
-        }
-        taskStreamContinuation = capturedTaskStreamContinuation
+        // Continuation will be captured during stream creation, so it is safe to force unwrap here.
+        // If this force-unwrap fails, something is fundamentally broken in the Swift runtime.
+        taskStreamContinuation = capturedTaskStreamContinuation!
 
         streamTask = Task.detached(priority: priority) {
             actor ActorExecutor {
