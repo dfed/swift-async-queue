@@ -42,28 +42,29 @@ public final class ActorQueue: Sendable {
 
         streamTask = Task.detached(priority: priority) {
             actor ActorExecutor {
-                func seriallyExecute(_ task: @escaping @Sendable () async -> Void) async {
+                func suspendUntilStarted(_ task: @escaping @Sendable () async -> Void) async {
                     let semaphore = Semaphore()
-                    Task {
-                        await self.execute(task, afterSignaling: semaphore)
-                    }
-                    // Wait for the task to start.
+                    executeWithoutWaiting(task, afterSignaling: semaphore)
+                    // Suspend the calling code until our enqueued task starts.
                     await semaphore.wait()
                 }
 
-                private func execute(
+                private func executeWithoutWaiting(
                     _ task: @escaping @Sendable () async -> Void,
-                    afterSignaling semaphore: Semaphore
-                ) async {
-                    // Signal that the task has started.
-                    await semaphore.signal()
-                    await task()
+                    afterSignaling semaphore: Semaphore)
+                {
+                    // Utilize the serial (but not FIFO) Actor context to execute the task without requiring the calling method to wait for the task to complete.
+                    Task {
+                        // Now that we're back within the serial Actor context, signal that the task has started.
+                        await semaphore.signal()
+                        await task()
+                    }
                 }
             }
 
             let executor = ActorExecutor()
             for await task in taskStream {
-                await executor.seriallyExecute(task)
+                await executor.suspendUntilStarted(task)
             }
         }
     }

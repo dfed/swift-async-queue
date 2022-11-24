@@ -29,7 +29,7 @@ actor Semaphore {
             return
         }
 
-        await withCheckedContinuation { continuation in
+        await withUnsafeContinuation { continuation in
             continuations.append(continuation)
         }
     }
@@ -52,6 +52,6 @@ actor Semaphore {
         count < 0
     }
 
-    private var continuations = [CheckedContinuation<Void, Never>]()
+    private var continuations = [UnsafeContinuation<Void, Never>]()
     private var count = 0
 }
