@@ -95,7 +95,7 @@ public final class ActorQueue {
         taskStreamContinuation.yield(.sync(task))
     }
 
-    /// Schedules an throwing task and returns after the task is complete.
+    /// Schedules a task and returns after the task is complete.
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
     /// - Parameter task: The task to enqueue.
     /// - Returns: The value returned from the enqueued task.
@@ -107,7 +107,7 @@ public final class ActorQueue {
         }
     }
 
-    /// Schedules an task and returns after the task is complete.
+    /// Schedules a throwing task and returns after the task is complete.
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
     /// - Parameter task: The task to enqueue.
     /// - Returns: The value returned from the enqueued task.
