@@ -175,9 +175,9 @@ final class AsyncQueueTests: XCTestCase {
     // MARK: - Counter
 
     private actor Counter {
-        func incrementAndExpectCount(equals expectedCount: Int) {
+        func incrementAndExpectCount(equals expectedCount: Int, file: StaticString = #filePath, line: UInt = #line) {
             increment()
-            XCTAssertEqual(expectedCount, count)
+            XCTAssertEqual(expectedCount, count, file: file, line: line)
         }
 
         func increment() {
