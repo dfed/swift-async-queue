@@ -68,7 +68,7 @@ Task {
     await queue.await {
         /*
         `async` context that can return a value or throw an error.
-        Executes after all other enqueued work has completed or suspended.
+        Executes after all other enqueued work has begun executing.
         Work enqueued after this task will wait for this task to complete or suspend.
         */
     }
