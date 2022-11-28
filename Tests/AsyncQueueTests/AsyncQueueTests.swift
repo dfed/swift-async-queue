@@ -26,8 +26,202 @@ import XCTest
 
 final class AsyncQueueTests: XCTestCase {
 
-    func test_example() {
-        _ = AsyncQueue()
+    // MARK: XCTestCase
+
+    override func setUp() async throws {
+        try await super.setUp()
+
+        systemUnderTest = AsyncQueue()
     }
 
+    // MARK: Behavior Tests
+
+    func test_async_sendsEventsInOrder() async {
+        let counter = Counter()
+        for iteration in 1...1_000 {
+            systemUnderTest.async {
+                await counter.incrementAndExpectCount(equals: iteration)
+            }
+        }
+        await systemUnderTest.await { /* Drain the queue */ }
+    }
+
+    func test_async_executesAsyncBlocksAtomically() async {
+        let semaphore = Semaphore()
+        for _ in 1...1_000 {
+            systemUnderTest.async {
+                let isWaiting = await semaphore.isWaiting
+                // This test will fail occasionally if we aren't executing atomically.
+                // You can prove this to yourself by replacing `systemUnderTest.async` above with `Task`.
+                XCTAssertFalse(isWaiting)
+                // Signal the semaphore before or after we wait – let the scheduler decide.
+                Task {
+                    await semaphore.signal()
+                }
+                // Wait for the concurrent task to complete.
+                await semaphore.wait()
+            }
+        }
+        await systemUnderTest.await { /* Drain the queue */ }
+    }
+
+    func test_async_isNotReentrant() async {
+        let counter = Counter()
+        await systemUnderTest.await { [systemUnderTest] in
+            systemUnderTest.async {
+                await counter.incrementAndExpectCount(equals: 2)
+            }
+            await counter.incrementAndExpectCount(equals: 1)
+            systemUnderTest.async {
+                await counter.incrementAndExpectCount(equals: 3)
+            }
+        }
+        await systemUnderTest.await { /* Drain the queue */ }
+    }
+
+    func test_async_retainsReceiverUntilFlushed() async {
+        var systemUnderTest: AsyncQueue? = AsyncQueue()
+        let counter = Counter()
+        let expectation = self.expectation(description: #function)
+        let semaphore = Semaphore()
+        systemUnderTest?.async {
+            // Make the queue wait.
+            await semaphore.wait()
+            await counter.incrementAndExpectCount(equals: 1)
+        }
+        systemUnderTest?.async {
+            // This async task should not execute until the semaphore is released.
+            await counter.incrementAndExpectCount(equals: 2)
+            expectation.fulfill()
+        }
+        // Nil out our reference to the queue to show that the enqueued tasks will still complete
+        systemUnderTest = nil
+        // Signal the semaphore to unlock the remaining enqueued tasks.
+        await semaphore.signal()
+
+        await waitForExpectations(timeout: 1.0)
+    }
+
+    func test_async_doesNotRetainTaskAfterExecution() async {
+        final class Reference: Sendable {}
+        final class ReferenceHolder: @unchecked Sendable {
+            var reference: Reference? = Reference()
+        }
+        let referenceHolder = ReferenceHolder()
+        weak var weakReference = referenceHolder.reference
+        let asyncSemaphore = Semaphore()
+        let syncSemaphore = Semaphore()
+        systemUnderTest.async { [reference = referenceHolder.reference] in
+            // Now that we've started the task and captured the reference, release the synchronous code.
+            await syncSemaphore.signal()
+            // Wait for the synchronous setup to complete and the reference to be nil'd out.
+            await asyncSemaphore.wait()
+            // Retain the unsafe counter until the task is completed.
+            _ = reference
+        }
+        // Wait for the asynchronous task to start.
+        await syncSemaphore.wait()
+        referenceHolder.reference = nil
+        XCTAssertNotNil(weakReference)
+        // Allow the enqueued task to complete.
+        await asyncSemaphore.signal()
+        // Make sure the task has completed.
+        await systemUnderTest.await { /* Drain the queue */ }
+        XCTAssertNil(weakReference)
+    }
+
+    func test_await_sendsEventsInOrder() async {
+        let counter = Counter()
+        for iteration in 1...1_000 {
+            systemUnderTest.async {
+                await counter.incrementAndExpectCount(equals: iteration)
+            }
+
+            guard iteration % 25 == 0 else {
+                // Keep sending async events to the queue.
+                continue
+            }
+
+            await systemUnderTest.await {
+                let count = await counter.count
+                XCTAssertEqual(count, iteration)
+            }
+        }
+        await systemUnderTest.await { /* Drain the queue */ }
+    }
+
+    func test_await_canReturn() async {
+        let expectedValue = UUID()
+        let returnedValue = await systemUnderTest.await { expectedValue }
+        XCTAssertEqual(expectedValue, returnedValue)
+    }
+
+    func test_await_canThrow() async {
+        struct TestError: Error, Equatable {
+            private let identifier = UUID()
+        }
+        let expectedError = TestError()
+        do {
+            try await systemUnderTest.await { throw expectedError }
+        } catch {
+            XCTAssertEqual(error as? TestError, expectedError)
+        }
+    }
+
+    // MARK: Private
+
+    private var systemUnderTest = AsyncQueue()
+
+    // MARK: - Counter
+
+    private actor Counter {
+        func incrementAndExpectCount(equals expectedCount: Int) {
+            increment()
+            XCTAssertEqual(expectedCount, count)
+        }
+
+        func increment() {
+            count += 1
+        }
+
+        var count = 0
+    }
+
+    // MARK: - Semaphore
+
+    private actor Semaphore {
+
+        func wait() async {
+            count -= 1
+            guard count < 0 else {
+                // We don't need to wait because count is greater than or equal to zero.
+                return
+            }
+
+            await withCheckedContinuation { continuation in
+                continuations.append(continuation)
+            }
+        }
+
+        func signal() {
+            count += 1
+            guard !isWaiting else {
+                // Continue waiting.
+                return
+            }
+
+            for continuation in continuations {
+                continuation.resume()
+            }
+
+            continuations.removeAll()
+        }
+
+        var isWaiting: Bool {
+            count < 0
+        }
+
+        private var continuations = [CheckedContinuation<Void, Never>]()
+        private var count = 0
+    }
 }

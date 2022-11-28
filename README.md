@@ -1,5 +1,31 @@
 # swift-async-queue
-A queue that enables ordered sending of events from synchronous to asynchronous code
+[![Swift Package Manager compatible](https://img.shields.io/badge/SPM-compatible-4BC51D.svg?style=flat)](https://github.com/apple/swift-package-manager)
+[![codecov](https://codecov.io/gh/dfed/swift-async-queue/branch/main/graph/badge.svg?token=nZBHcZZ63F)](https://codecov.io/gh/dfed/swift-async-queue)
+[![Version](https://img.shields.io/cocoapods/v/swift-async-queue.svg)](https://cocoapods.org/pods/swift-async-queue)
+[![License](https://img.shields.io/cocoapods/l/swift-async-queue.svg)](https://cocoapods.org/pods/swift-async-queue)
+[![Platform](https://img.shields.io/cocoapods/p/swift-async-queue.svg)](https://cocoapods.org/pods/swift-async-queue)
+
+A queue that enables sending FIFO-ordered tasks from synchronous to asynchronous contexts.
+
+## Usage
+
+### Basic Initialization
+
+```swift
+let asyncQueue = AsyncQueue()
+```
+
+### Sending events from a synchronous context
+
+```swift
+asyncQueue.async { /* awaitable context that executes after all other enqueued work is completed */ }
+```
+
+### Awaiting work from an asynchronous context
+
+```swift
+await asyncQueue.await { /* throw-able, return-able, awaitable context that executes after all other enqueued work is completed */ }
+```
 
 ## Requirements
 

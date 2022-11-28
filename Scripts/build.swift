@@ -159,7 +159,8 @@ for rawPlatform in rawPlatforms {
         "-scheme", "swift-async-queue",
         "-sdk", platform.sdk,
         "-derivedDataPath", platform.derivedDataPath,
-        "-PBXBuildsContinueAfterErrors=0"
+        "-PBXBuildsContinueAfterErrors=0",
+        "OTHER_SWIFT_FLAGS=-warnings-as-errors",
     ]
 
     if !platform.destination.isEmpty {
@@ -174,6 +175,9 @@ for rawPlatform in rawPlatforms {
     if platform.shouldTest {
         xcodeBuildArguments.append("test")
     }
+    xcodeBuildArguments.append("-test-iterations")
+    xcodeBuildArguments.append("100")
+    xcodeBuildArguments.append("-run-tests-until-failure")
 
     try execute(commandPath: "/usr/bin/xcodebuild", arguments: xcodeBuildArguments)
     isFirstRun = false
