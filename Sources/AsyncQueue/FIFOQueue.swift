@@ -27,7 +27,7 @@ public final class FIFOQueue: Sendable {
 
     // MARK: Initialization
 
-    /// Instantiates an asynchronous queue.
+    /// Instantiates a FIFO queue.
     /// - Parameter priority: The baseline priority of the tasks added to the asynchronous queue.
     public init(priority: TaskPriority? = nil) {
         var capturedTaskStreamContinuation: AsyncStream<@Sendable () async -> Void>.Continuation? = nil
@@ -58,7 +58,7 @@ public final class FIFOQueue: Sendable {
         taskStreamContinuation.yield(task)
     }
 
-    /// Schedules an asynchronous throwing task and returns after the task is complete.
+    /// Schedules an asynchronous task and returns after the task is complete.
     /// The scheduled task will not execute until all prior tasks have completed.
     /// - Parameter task: The task to enqueue.
     /// - Returns: The value returned from the enqueued task.
@@ -70,7 +70,7 @@ public final class FIFOQueue: Sendable {
         }
     }
 
-    /// Schedules an asynchronous task and returns after the task is complete.
+    /// Schedules an asynchronous throwing task and returns after the task is complete.
     /// The scheduled task will not execute until all prior tasks have completed.
     /// - Parameter task: The task to enqueue.
     /// - Returns: The value returned from the enqueued task.

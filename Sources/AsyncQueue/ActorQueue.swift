@@ -28,7 +28,7 @@ public final class ActorQueue {
 
     // MARK: Initialization
 
-    /// Instantiates an asynchronous queue.
+    /// Instantiates an actor queue.
     /// - Parameter priority: The baseline priority of the tasks added to the asynchronous queue.
     public init(priority: TaskPriority? = nil) {
         var capturedTaskStreamContinuation: AsyncStream<TaskType>.Continuation? = nil
@@ -60,7 +60,7 @@ public final class ActorQueue {
         taskStreamContinuation.yield(.async(task))
     }
 
-    /// Schedules an asynchronous throwing task and returns after the task is complete.
+    /// Schedules an asynchronous task and returns after the task is complete.
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
     /// - Parameter task: The task to enqueue.
     /// - Returns: The value returned from the enqueued task.
@@ -72,7 +72,7 @@ public final class ActorQueue {
         }
     }
 
-    /// Schedules an asynchronous task and returns after the task is complete.
+    /// Schedules an asynchronous throwing task and returns after the task is complete.
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
     /// - Parameter task: The task to enqueue.
     /// - Returns: The value returned from the enqueued task.
