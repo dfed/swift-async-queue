@@ -24,7 +24,7 @@
 /// Tasks are guaranteed to begin executing in the order in which they are enqueued. However, if a task suspends it will allow tasks that were enqueued to begin executing.
 /// Asynchronous tasks sent to this queue execute as they would in an `actor` type, allowing for re-entrancy and non-FIFO behavior when an individual task suspends.
 /// - Warning: Execution order is not guaranteed unless the enqueued tasks interact with a single `actor` instance.
-public final class ActorQueue: Sendable {
+public final class ActorQueue {
 
     // MARK: Initialization
 
