@@ -57,7 +57,7 @@ Task {
 
 ### Sending ordered asynchronous tasks to Actors
 
-Use an `ActorQueue` queue to send ordered asynchronous tasks from a nonisolated context to an `actor` instance. Tasks sent to one of these queues are guaranteed to begin _but not end_ executing in the order in which they are enqueued.
+Use an `ActorQueue` queue to send ordered asynchronous tasks from a nonisolated context to an `actor` instance. Tasks sent to one of these queues are guaranteed to begin executing in the order in which they are enqueued. Ordering of execution is guaranteed up until the first [suspension point](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID639) within the called `actor` code.
 
 ```swift
 let queue = ActorQueue()
