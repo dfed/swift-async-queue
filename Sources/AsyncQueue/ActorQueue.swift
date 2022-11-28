@@ -31,8 +31,8 @@ public final class ActorQueue {
     /// Instantiates an actor queue.
     /// - Parameter priority: The baseline priority of the tasks added to the asynchronous queue.
     public init(priority: TaskPriority? = nil) {
-        var capturedTaskStreamContinuation: AsyncStream<TaskType>.Continuation? = nil
-        let taskStream = AsyncStream<TaskType> { continuation in
+        var capturedTaskStreamContinuation: AsyncStream<@Sendable () async -> Void>.Continuation? = nil
+        let taskStream = AsyncStream<@Sendable () async -> Void> { continuation in
             capturedTaskStreamContinuation = continuation
         }
         // Continuation will be captured during stream creation, so it is safe to force unwrap here.
@@ -57,7 +57,7 @@ public final class ActorQueue {
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
     /// - Parameter task: The task to enqueue.
     public func async(_ task: @escaping @Sendable () async -> Void) {
-        taskStreamContinuation.yield(.async(task))
+        taskStreamContinuation.yield(task)
     }
 
     /// Schedules an asynchronous task and returns after the task is complete.
@@ -66,9 +66,9 @@ public final class ActorQueue {
     /// - Returns: The value returned from the enqueued task.
     public func await<T>(_ task: @escaping @Sendable () async -> T) async -> T {
         await withUnsafeContinuation { continuation in
-            taskStreamContinuation.yield(.async({
+            taskStreamContinuation.yield {
                 continuation.resume(returning: await task())
-            }))
+            }
         }
     }
 
@@ -78,66 +78,24 @@ public final class ActorQueue {
     /// - Returns: The value returned from the enqueued task.
     public func await<T>(_ task: @escaping @Sendable () async throws -> T) async throws -> T {
         try await withUnsafeThrowingContinuation { continuation in
-            taskStreamContinuation.yield(.async({
+            taskStreamContinuation.yield {
                 do {
                     continuation.resume(returning: try await task())
                 } catch {
                     continuation.resume(throwing: error)
                 }
-            }))
-        }
-    }
-
-    /// Schedules a synchronous task for execution and immediately returns.
-    /// The scheduled task will not execute until all prior tasks have completed or suspended.
-    /// - Parameter task: The task to enqueue.
-    public func async(_ task: @escaping @Sendable () -> Void) {
-        taskStreamContinuation.yield(.sync(task))
-    }
-
-    /// Schedules a task and returns after the task is complete.
-    /// The scheduled task will not execute until all prior tasks have completed or suspended.
-    /// - Parameter task: The task to enqueue.
-    /// - Returns: The value returned from the enqueued task.
-    public func await<T>(_ task: @escaping @Sendable () -> T) async -> T {
-        await withUnsafeContinuation { continuation in
-            taskStreamContinuation.yield(.sync({
-                continuation.resume(returning: task())
-            }))
-        }
-    }
-
-    /// Schedules a throwing task and returns after the task is complete.
-    /// The scheduled task will not execute until all prior tasks have completed or suspended.
-    /// - Parameter task: The task to enqueue.
-    /// - Returns: The value returned from the enqueued task.
-    public func await<T>(_ task: @escaping @Sendable () throws -> T) async throws -> T {
-        try await withUnsafeThrowingContinuation { continuation in
-            taskStreamContinuation.yield(.sync({
-                do {
-                    continuation.resume(returning: try task())
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }))
+            }
         }
     }
 
     // MARK: Private
 
-    private let taskStreamContinuation: AsyncStream<TaskType>.Continuation
-
-    // MARK: - TaskType
-
-    enum TaskType {
-        case sync(@Sendable () -> Void)
-        case async(@Sendable () async -> Void)
-    }
+    private let taskStreamContinuation: AsyncStream<@Sendable () async -> Void>.Continuation
 
     // MARK: - ActorExecutor
 
     private actor ActorExecutor {
-        func suspendUntilStarted(_ task: TaskType) async {
+        func suspendUntilStarted(_ task: @escaping @Sendable () async -> Void) async {
             let semaphore = Semaphore()
             executeWithoutWaiting(task, afterSignaling: semaphore)
             // Suspend the calling code until our enqueued task starts.
@@ -145,21 +103,14 @@ public final class ActorQueue {
         }
 
         private func executeWithoutWaiting(
-            _ task: TaskType,
+            _ task: @escaping @Sendable () async -> Void,
             afterSignaling semaphore: Semaphore)
         {
             // Utilize the serial (but not FIFO) Actor context to execute the task without requiring the calling method to wait for the task to complete.
             Task {
-                switch task {
-                case let .sync(task):
-                    task()
-                    // Synchronous tasks can not re-enter this queue, so it is safe to wait until the task completes prior to signaling the semaphore.
-                    await semaphore.signal()
-                case let .async(task):
-                    // Signal that the task has started. As long as the `task` below interacts with another `actor` the order of execution is guaranteed.
-                    await semaphore.signal()
-                    await task()
-                }
+                // Signal that the task has started. As long as the `task` below interacts with another `actor` the order of execution is guaranteed.
+                await semaphore.signal()
+                await task()
             }
         }
     }
