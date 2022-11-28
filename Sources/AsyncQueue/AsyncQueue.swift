@@ -50,14 +50,14 @@ public final class AsyncQueue: Sendable {
     // MARK: Public
 
     /// Schedules an asynchronous task for execution and immediately returns.
-    /// The schedueled task will not execute until all prior tasks have completed.
+    /// The scheduled task will not execute until all prior tasks have completed.
     /// - Parameter task: The task to enqueue.
     public func async(_ task: @escaping @Sendable () async -> Void) {
         taskStreamContinuation.yield(task)
     }
 
     /// Schedules an asynchronous throwing task and returns after the task is complete.
-    /// The schedueled task will not execute until all prior tasks have completed.
+    /// The scheduled task will not execute until all prior tasks have completed.
     /// - Parameter task: The task to enqueue.
     /// - Returns: The value returned from the enqueued task.
     public func await<T>(_ task: @escaping @Sendable () async -> T) async -> T {
@@ -69,7 +69,7 @@ public final class AsyncQueue: Sendable {
     }
 
     /// Schedules an asynchronous task and returns after the task is complete.
-    /// The schedueled task will not execute until all prior tasks have completed.
+    /// The scheduled task will not execute until all prior tasks have completed.
     /// - Parameter task: The task to enqueue.
     /// - Returns: The value returned from the enqueued task.
     public func await<T>(_ task: @escaping @Sendable () async throws -> T) async throws -> T {
