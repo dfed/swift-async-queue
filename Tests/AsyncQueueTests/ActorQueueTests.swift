@@ -46,6 +46,37 @@ final class ActorQueueTests: XCTestCase {
         await systemUnderTest.await { /* Drain the queue */ }
     }
 
+    func test_async_sendsSynchronousEventsInOrder() async {
+        final class SynchronousCounter: @unchecked Sendable {
+            func incrementAndExpectCount(equals expectedCount: Int) {
+                increment()
+                XCTAssertEqual(expectedCount, count)
+            }
+
+            func increment() {
+                count += 1
+            }
+
+            var count: Int {
+                set {
+                    dispatchQueue.async { self.unsafeCount = newValue }
+                }
+                get {
+                    dispatchQueue.sync { unsafeCount }
+                }
+            }
+            var unsafeCount = 0
+            let dispatchQueue = DispatchQueue(label: #function)
+        }
+        let counter = SynchronousCounter()
+        for iteration in 1...1_000 {
+            systemUnderTest.async {
+                counter.incrementAndExpectCount(equals: iteration)
+            }
+        }
+        await systemUnderTest.await { /* Drain the queue */ }
+    }
+
     func test_async_startsExecutionOfNextTaskAfterSuspension() async {
         let counter = Counter()
         let semaphore = Semaphore()

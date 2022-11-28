@@ -31,36 +31,15 @@ public final class ActorQueue: Sendable {
     /// Instantiates an asynchronous queue.
     /// - Parameter priority: The baseline priority of the tasks added to the asynchronous queue.
     public init(priority: TaskPriority? = nil) {
-        var capturedTaskStreamContinuation: AsyncStream<@Sendable () async -> Void>.Continuation? = nil
-        let taskStream = AsyncStream<@Sendable () async -> Void> { continuation in
+        var capturedTaskStreamContinuation: AsyncStream<TaskType>.Continuation? = nil
+        let taskStream = AsyncStream<TaskType> { continuation in
             capturedTaskStreamContinuation = continuation
         }
         // Continuation will be captured during stream creation, so it is safe to force unwrap here.
         // If this force-unwrap fails, something is fundamentally broken in the Swift runtime.
         taskStreamContinuation = capturedTaskStreamContinuation!
 
-        streamTask = Task.detached(priority: priority) {
-            actor ActorExecutor {
-                func suspendUntilStarted(_ task: @escaping @Sendable () async -> Void) async {
-                    let semaphore = Semaphore()
-                    executeWithoutWaiting(task, afterSignaling: semaphore)
-                    // Suspend the calling code until our enqueued task starts.
-                    await semaphore.wait()
-                }
-
-                private func executeWithoutWaiting(
-                    _ task: @escaping @Sendable () async -> Void,
-                    afterSignaling semaphore: Semaphore)
-                {
-                    // Utilize the serial (but not FIFO) Actor context to execute the task without requiring the calling method to wait for the task to complete.
-                    Task {
-                        // Now that we're back within the serial Actor context, signal that the task has started.
-                        await semaphore.signal()
-                        await task()
-                    }
-                }
-            }
-
+        Task.detached(priority: priority) {
             let executor = ActorExecutor()
             for await task in taskStream {
                 await executor.suspendUntilStarted(task)
@@ -78,7 +57,7 @@ public final class ActorQueue: Sendable {
     /// The schedueled task will not execute until all prior tasks have completed or suspended.
     /// - Parameter task: The task to enqueue.
     public func async(_ task: @escaping @Sendable () async -> Void) {
-        taskStreamContinuation.yield(task)
+        taskStreamContinuation.yield(.async(task))
     }
 
     /// Schedules an asynchronous throwing task and returns after the task is complete.
@@ -87,9 +66,9 @@ public final class ActorQueue: Sendable {
     /// - Returns: The value returned from the enqueued task.
     public func await<T>(_ task: @escaping @Sendable () async -> T) async -> T {
         await withUnsafeContinuation { continuation in
-            taskStreamContinuation.yield {
+            taskStreamContinuation.yield(.async({
                 continuation.resume(returning: await task())
-            }
+            }))
         }
     }
 
@@ -99,18 +78,90 @@ public final class ActorQueue: Sendable {
     /// - Returns: The value returned from the enqueued task.
     public func await<T>(_ task: @escaping @Sendable () async throws -> T) async throws -> T {
         try await withUnsafeThrowingContinuation { continuation in
-            taskStreamContinuation.yield {
+            taskStreamContinuation.yield(.async({
                 do {
                     continuation.resume(returning: try await task())
                 } catch {
                     continuation.resume(throwing: error)
                 }
-            }
+            }))
+        }
+    }
+
+    /// Schedules a synchronous task for execution and immediately returns.
+    /// The schedueled task will not execute until all prior tasks have completed or suspended.
+    /// - Parameter task: The task to enqueue.
+    public func async(_ task: @escaping @Sendable () -> Void) {
+        taskStreamContinuation.yield(.sync(task))
+    }
+
+    /// Schedules an throwing task and returns after the task is complete.
+    /// The schedueled task will not execute until all prior tasks have completed or suspended.
+    /// - Parameter task: The task to enqueue.
+    /// - Returns: The value returned from the enqueued task.
+    public func await<T>(_ task: @escaping @Sendable () -> T) async -> T {
+        await withUnsafeContinuation { continuation in
+            taskStreamContinuation.yield(.sync({
+                continuation.resume(returning: task())
+            }))
+        }
+    }
+
+    /// Schedules an task and returns after the task is complete.
+    /// The schedueled task will not execute until all prior tasks have completed or suspended.
+    /// - Parameter task: The task to enqueue.
+    /// - Returns: The value returned from the enqueued task.
+    public func await<T>(_ task: @escaping @Sendable () throws -> T) async throws -> T {
+        try await withUnsafeThrowingContinuation { continuation in
+            taskStreamContinuation.yield(.sync({
+                do {
+                    continuation.resume(returning: try task())
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }))
         }
     }
 
     // MARK: Private
 
-    private let streamTask: Task<Void, Never>
-    private let taskStreamContinuation: AsyncStream<@Sendable () async -> Void>.Continuation
+    private let taskStreamContinuation: AsyncStream<TaskType>.Continuation
+
+    // MARK: - TaskType
+
+    enum TaskType {
+        case sync(@Sendable () -> Void)
+        case async(@Sendable () async -> Void)
+    }
+
+    // MARK: - ActorExecutor
+
+    private actor ActorExecutor {
+        func suspendUntilStarted(_ task: TaskType) async {
+            let semaphore = Semaphore()
+            executeWithoutWaiting(task, afterSignaling: semaphore)
+            // Suspend the calling code until our enqueued task starts.
+            await semaphore.wait()
+        }
+
+        private func executeWithoutWaiting(
+            _ task: TaskType,
+            afterSignaling semaphore: Semaphore)
+        {
+            // Utilize the serial (but not FIFO) Actor context to execute the task without requiring the calling method to wait for the task to complete.
+            Task {
+                switch task {
+                case let .sync(task):
+                    task()
+                    // Synchronous tasks can not re-enter this queue, so it is safe to wait until the task completes prior to signaling the semaphore.
+                    await semaphore.signal()
+                case let .async(task):
+                    // Signal that the task has started. As long as the `task` below interacts with another `actor` the order of execution is guaranteed.
+                    await semaphore.signal()
+                    await task()
+                }
+            }
+        }
+    }
+
 }
