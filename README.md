@@ -2,7 +2,7 @@
 [![Swift Package Manager compatible](https://img.shields.io/badge/SPM-compatible-4BC51D.svg?style=flat)](https://github.com/apple/swift-package-manager)
 [![codecov](https://codecov.io/gh/dfed/swift-async-queue/branch/main/graph/badge.svg?token=nZBHcZZ63F)](https://codecov.io/gh/dfed/swift-async-queue)
 
-A library of queues that enables sending ordered tasks from synchronous to asynchronous contexts.
+A library of queues that enable sending ordered tasks from synchronous to asynchronous contexts.
 
 ## Task Ordering and Swift Concurrency
 
