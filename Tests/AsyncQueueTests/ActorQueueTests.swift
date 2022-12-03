@@ -89,7 +89,7 @@ final class ActorQueueTests: XCTestCase {
         let referenceHolder = ReferenceHolder()
         let asyncSemaphore = Semaphore()
         let syncSemaphore = Semaphore()
-        let asyncTaskCompletingExpectation = expectation(description: "async task completing")
+        let expectation = self.expectation(description: #function)
         systemUnderTest.async { [reference = referenceHolder.reference] in
             // Now that we've started the task and captured the reference, release the synchronous code.
             await syncSemaphore.signal()
@@ -100,7 +100,7 @@ final class ActorQueueTests: XCTestCase {
             self.systemUnderTest.async {
                 // Signal that this task has cleaned up.
                 // This closure will not execute until the prior closure completes.
-                asyncTaskCompletingExpectation.fulfill()
+                expectation.fulfill()
             }
         }
         // Wait for the asynchronous task to start.
