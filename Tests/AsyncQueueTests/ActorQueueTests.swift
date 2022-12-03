@@ -47,18 +47,15 @@ final class ActorQueueTests: XCTestCase {
     }
 
     func test_async_startsExecutionOfNextTaskAfterSuspension() async {
-        let counter = Counter()
         let semaphore = Semaphore()
-        for iteration in 1...1_000 {
-            systemUnderTest.async {
-                await counter.incrementAndExpectCount(equals: iteration)
-                await semaphore.wait()
-            }
+        systemUnderTest.async {
+            await semaphore.wait()
         }
         systemUnderTest.async {
-            for _ in 1...1_000 {
-                await semaphore.signal()
-            }
+            // Signal the semaphore from the actor queue.
+            // If the actor queue were FIFO, this test would hang since this code would never execute:
+            // we'd still be waiting for the prior `wait()` tasks to finish.
+            await semaphore.signal()
         }
         await systemUnderTest.await { /* Drain the queue */ }
     }
