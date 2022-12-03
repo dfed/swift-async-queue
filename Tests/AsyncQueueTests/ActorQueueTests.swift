@@ -73,15 +73,23 @@ final class ActorQueueTests: XCTestCase {
 
     @MainActor
     func test_async_doesNotRetainTaskAfterExecution() async {
-        let expectation = self.expectation(description: #function)
         final class Reference: Sendable {}
         final class ReferenceHolder: @unchecked Sendable {
-            var reference: Reference? = Reference()
+            init() {
+                reference = Reference()
+                weakReference = reference
+            }
+            private(set) var reference: Reference?
+            private(set) weak var weakReference: Reference?
+
+            func clearReference() {
+                reference = nil
+            }
         }
         let referenceHolder = ReferenceHolder()
-        weak var weakReference = referenceHolder.reference
         let asyncSemaphore = Semaphore()
         let syncSemaphore = Semaphore()
+        let asyncTaskCompletingExpectation = expectation(description: "async task completing")
         systemUnderTest.async { [reference = referenceHolder.reference] in
             // Now that we've started the task and captured the reference, release the synchronous code.
             await syncSemaphore.signal()
@@ -89,21 +97,22 @@ final class ActorQueueTests: XCTestCase {
             await asyncSemaphore.wait()
             // Retain the unsafe counter until the task is completed.
             _ = reference
-            // Signal that this task is about to clean up.
-            expectation.fulfill()
+            self.systemUnderTest.async {
+                // Signal that this task has cleaned up.
+                // This closure will not execute until the prior closure completes.
+                asyncTaskCompletingExpectation.fulfill()
+            }
         }
         // Wait for the asynchronous task to start.
         await syncSemaphore.wait()
-        referenceHolder.reference = nil
-        XCTAssertNotNil(weakReference)
+        referenceHolder.clearReference()
+        XCTAssertNotNil(referenceHolder.weakReference)
         // Allow the enqueued task to complete.
         await asyncSemaphore.signal()
         // Make sure the task has completed.
         waitForExpectations(timeout: 1.0)
-        // Wait a runloop to ensure the previously enqueued task has had time to deallocate.
-        DispatchQueue.main.async {
-            XCTAssertNil(weakReference)
-        }
+
+        XCTAssertNil(referenceHolder.weakReference)
     }
 
     func test_await_sendsEventsInOrder() async {
