@@ -13,7 +13,7 @@ jobs:
   #   name: Pod Lint
   #   runs-on: macOS-12
   #   steps:
-  #     - uses: actions/setup-ruby@v1
+  #     - uses: ruby/setup-ruby@v1
   #       with:
   #         ruby-version: '2.7.6'
   #     - name: Checkout Repo
@@ -35,7 +35,7 @@ jobs:
         ]
       fail-fast: false
     steps:
-      - uses: actions/setup-ruby@v1
+      - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '2.7.6'
       - name: Checkout Repo
@@ -55,7 +55,7 @@ jobs:
     name: Swift Build Xcode 14
     runs-on: macOS-12
     steps:
-      - uses: actions/setup-ruby@v1
+      - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '2.7.6'
       - name: Checkout Repo
