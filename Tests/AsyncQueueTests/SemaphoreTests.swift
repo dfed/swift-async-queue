@@ -57,6 +57,8 @@ final class SemaphoreTests: XCTestCase {
         }
 
         var signals = [Task<Void, Never>]()
+        // Loop one fewer than iterationCount.
+        // The count will be zero each time because we haven't `signal`ed `iterationCount` times yet.
         for _ in 0..<(iterationCount-1) {
             signals.append(Task {
                 await self.systemUnderTest.signal()
@@ -65,16 +67,22 @@ final class SemaphoreTests: XCTestCase {
             })
         }
 
+        // Wait for every looped `signal` task above to complete before we signal the final time.
+        // If we didn't wait here, we could introduce a race condition that would lead the above `XCTAssertEqual` to fail.
         for signal in signals {
             await signal.value
         }
 
+        // Signal one more time, matching the number of `wait`s above.
         await self.systemUnderTest.signal()
 
+        // Now that we have a matching number of `signal`s to the number of enqueued `wait`s, we can await the completion of every wait task.
+        // Waiting for the `waits` prior to now would have deadlocked.
         for wait in waits {
             await wait.value
         }
 
+        // Now that we've executed a matching number of `wait` and `signal` calls, the counter will have been incremented `iterationCount` times.
         let count = await counter.count
         XCTAssertEqual(iterationCount, count)
     }
