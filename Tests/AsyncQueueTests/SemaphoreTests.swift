@@ -89,8 +89,8 @@ final class SemaphoreTests: XCTestCase {
 
     func test_wait_doesNotSuspendIfSignalCalledFirst() async {
         await systemUnderTest.signal()
-        await systemUnderTest.wait()
-        // If the test doesn't hang forever, we've succeeded!
+        let didSuspend = await systemUnderTest.wait()
+        XCTAssertFalse(didSuspend)
     }
 
     // MARK: Private
