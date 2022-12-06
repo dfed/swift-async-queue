@@ -45,46 +45,73 @@ final class SemaphoreTests: XCTestCase {
     // MARK: Behavior Tests
 
     func test_wait_suspendsUntilEqualNumberOfSignalCalls() async {
-        let counter = Counter()
+        actor CountingExecutor {
+            func enqueue(andCount incrementOnCompletion: Bool = false, _ task: @escaping @Sendable () async -> Void) async {
+                await withCheckedContinuation { continuation in
+                    // Re-enter the actor context but don't wait for the result.
+                    Task {
+                        // Now that we're back in the actor context, resume.
+                        continuation.resume()
+                        await task()
+                        if incrementOnCompletion {
+                            incrementTasksCompleted()
+                        }
+                    }
+                }
+            }
+
+            func execute(_ task: @Sendable () async -> Void) async {
+                await task()
+            }
+
+            var countedTasksCompleted = 0
+
+            private func incrementTasksCompleted() {
+                countedTasksCompleted += 1
+            }
+        }
+        let executor = CountingExecutor()
         let iterationCount = 1_000
 
-        var waits = [Task<Void, Never>]()
         for _ in 1...iterationCount {
-            waits.append(Task {
-                await self.systemUnderTest.wait()
-                await counter.increment()
-            })
+            await executor.enqueue(andCount: true) {
+                let didSuspend = await self.systemUnderTest.wait()
+                XCTAssertTrue(didSuspend)
+
+                // Signal without waiting that our prior wait completed.
+                Task {
+                    await self.systemUnderTest.signal()
+                }
+            }
         }
 
-        var signals = [Task<Void, Never>]()
         // Loop one fewer than iterationCount.
-        // The count will be zero each time because we haven't `signal`ed `iterationCount` times yet.
+        // The count will be zero each time because we have more `wait` than `signal` calls.
         for _ in 0..<(iterationCount-1) {
-            signals.append(Task {
+            await executor.enqueue {
                 await self.systemUnderTest.signal()
-                let count = await counter.count
-                XCTAssertEqual(0, count)
-            })
+                // Enqueue a task to check the completed task count to give the suspended tasks above time to resume (if they were to resume, which they won't).
+                await executor.enqueue {
+                    let completedCountedTasks = await executor.countedTasksCompleted
+                    XCTAssertEqual(completedCountedTasks, 0)
+                }
+            }
         }
 
-        // Wait for every looped `signal` task above to complete before we signal the final time.
-        // If we didn't wait here, we could introduce a race condition that would lead the above `XCTAssertEqual` to fail.
-        for signal in signals {
-            await signal.value
+        await executor.execute {
+            // Signal one last time, enabling all of the original `wait` calls to resume.
+            await self.systemUnderTest.signal()
+
+            for _ in 1...iterationCount {
+                // Wait for all enqueued `wait`s to have completed and signaled their completion.
+                await self.systemUnderTest.wait()
+            }
+            // Enqueue a task to check the completed task count to give the suspended tasks above time to resume.
+            await executor.enqueue {
+                let tasksCompleted = await executor.countedTasksCompleted
+                XCTAssertEqual(iterationCount, tasksCompleted)
+            }
         }
-
-        // Signal one more time, matching the number of `wait`s above.
-        await self.systemUnderTest.signal()
-
-        // Now that we have a matching number of `signal`s to the number of enqueued `wait`s, we can await the completion of every wait task.
-        // Waiting for the `waits` prior to now would have deadlocked.
-        for wait in waits {
-            await wait.value
-        }
-
-        // Now that we've executed a matching number of `wait` and `signal` calls, the counter will have been incremented `iterationCount` times.
-        let count = await counter.count
-        XCTAssertEqual(iterationCount, count)
     }
 
     func test_wait_doesNotSuspendIfSignalCalledFirst() async {
