@@ -45,12 +45,29 @@ final class SemaphoreTests: XCTestCase {
     // MARK: Behavior Tests
 
     func test_wait_suspendsUntilEqualNumberOfSignalCalls() async {
+        /*
+         This test is tricky to pull off!
+         Our requirements:
+         1. We need to call `wait()` before `signal()`
+         2. We need to ensure that the `wait()` call suspends _before_ we call `signal()`
+         3. We can't `await` the `wait()` call before calling `signal()` since that would effectively deadlock the test.
+
+         In order to ensure that we are executing the `wait()` calls before we call `signal()` _without awaiting a `wait()` call_,
+         we utilize an Actor (which has inherently ordered execution) to enqueue ordered `Task`s. We make calls to this actor
+         `await` the beginning of the `Task` to ensure that each `Task` has begun before resuming the test's execution.
+         */
+
         actor CountingExecutor {
+            /// Enqueues an asynchronous task. This method suspends the caller until the asynchronous task has begun, ensuring ordered execution of enqueued tasks.
+            /// - Parameters:
+            ///   - incrementOnCompletion: Whether to increment `countedTasksCompleted` once the `task` completes.
+            ///   - task: A unit of work.
             func enqueue(andCount incrementOnCompletion: Bool = false, _ task: @escaping @Sendable () async -> Void) async {
+                // Await the start of the soon-to-be-enqueued `Task` with a continuation.
                 await withCheckedContinuation { continuation in
                     // Re-enter the actor context but don't wait for the result.
                     Task {
-                        // Now that we're back in the actor context, resume.
+                        // Now that we're back in the actor context, resume the calling code.
                         continuation.resume()
                         await task()
                         if incrementOnCompletion {
@@ -78,7 +95,8 @@ final class SemaphoreTests: XCTestCase {
                 let didSuspend = await self.systemUnderTest.wait()
                 XCTAssertTrue(didSuspend)
 
-                // Signal without waiting that our prior wait completed.
+                // Signal without waiting that the suspended wait call above has resumed.
+                // This signal allows us to `wait()` for all of these enqueued `wait()` tasks to have completed later in this test.
                 Task {
                     await self.systemUnderTest.signal()
                 }
