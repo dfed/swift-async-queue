@@ -59,64 +59,61 @@ final class SemaphoreTests: XCTestCase {
 
         actor CountingExecutor {
             /// Enqueues an asynchronous task. This method suspends the caller until the asynchronous task has begun, ensuring ordered execution of enqueued tasks.
-            /// - Parameters:
-            ///   - incrementOnCompletion: Whether to increment `countedTasksCompleted` once the `task` completes.
-            ///   - task: A unit of work.
-            func enqueue(andCount incrementOnCompletion: Bool = false, _ task: @escaping @Sendable () async -> Void) async {
+            /// - Parameter task: A unit of work that returns work to execute after the task completes and the count is incremented.
+            func enqueueAndCount(_ task: @escaping @Sendable () async -> (() async -> Void)?) async {
                 // Await the start of the soon-to-be-enqueued `Task` with a continuation.
                 await withCheckedContinuation { continuation in
                     // Re-enter the actor context but don't wait for the result.
                     Task {
                         // Now that we're back in the actor context, resume the calling code.
                         continuation.resume()
-                        await task()
-                        if incrementOnCompletion {
-                            incrementTasksCompleted()
-                        }
+                        let executeAfterIncrement = await task()
+                        countedTasksCompleted += 1
+                        await executeAfterIncrement?()
                     }
                 }
             }
 
-            func execute(_ task: @Sendable () async -> Void) async {
-                await task()
+            func execute(_ task: @Sendable () async throws -> Void) async rethrows {
+                try await task()
             }
 
             var countedTasksCompleted = 0
-
-            private func incrementTasksCompleted() {
-                countedTasksCompleted += 1
-            }
         }
+
         let executor = CountingExecutor()
         let iterationCount = 1_000
 
         for _ in 1...iterationCount {
-            await executor.enqueue(andCount: true) {
+            await executor.enqueueAndCount {
                 let didSuspend = await self.systemUnderTest.wait()
                 XCTAssertTrue(didSuspend)
 
-                // Signal without waiting that the suspended wait call above has resumed.
-                // This signal allows us to `wait()` for all of these enqueued `wait()` tasks to have completed later in this test.
-                Task {
+                return {
+                    // Signal that the suspended wait call above has resumed.
+                    // This signal allows us to `wait()` for all of these enqueued `wait()` tasks to have completed later in this test.
                     await self.systemUnderTest.signal()
                 }
             }
         }
 
         // Loop one fewer than iterationCount.
-        // The count will be zero each time because we have more `wait` than `signal` calls.
-        for _ in 0..<(iterationCount-1) {
-            await executor.enqueue {
+        for _ in 1..<iterationCount {
+            await executor.execute {
                 await self.systemUnderTest.signal()
-                // Enqueue a task to check the completed task count to give the suspended tasks above time to resume (if they were to resume, which they won't).
-                await executor.enqueue {
-                    let completedCountedTasks = await executor.countedTasksCompleted
-                    XCTAssertEqual(completedCountedTasks, 0)
-                }
             }
         }
 
         await executor.execute {
+            // Give each suspended `wait` task an opportunity to resume (if they were to resume, which they won't) before we check the count.
+            for _ in 1...iterationCount {
+                await Task.yield()
+            }
+
+            // The count will still be zero each time because we have executed one more `wait` than `signal` calls.
+            let completedCountedTasks = await executor.countedTasksCompleted
+            XCTAssertEqual(completedCountedTasks, 0)
+
             // Signal one last time, enabling all of the original `wait` calls to resume.
             await self.systemUnderTest.signal()
 
@@ -124,11 +121,9 @@ final class SemaphoreTests: XCTestCase {
                 // Wait for all enqueued `wait`s to have completed and signaled their completion.
                 await self.systemUnderTest.wait()
             }
-            // Enqueue a task to check the completed task count to give the suspended tasks above time to resume.
-            await executor.enqueue {
-                let tasksCompleted = await executor.countedTasksCompleted
-                XCTAssertEqual(iterationCount, tasksCompleted)
-            }
+
+            let tasksCompleted = await executor.countedTasksCompleted
+            XCTAssertEqual(iterationCount, tasksCompleted)
         }
     }
 
