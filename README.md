@@ -40,6 +40,12 @@ queue.async {
     `async` context that executes after all other enqueued work is completed.
     Work enqueued after this task will wait for this task to complete.
     */
+    try? await Task.sleep(nanoseconds: 1_000_000)
+}
+queue.async {
+    /*
+    This task begins execution once the above one-second sleep completes.
+    */
 }
 Task {
     await queue.await {
@@ -63,6 +69,12 @@ queue.async {
     `async` context that executes after all other enqueued work has begun executing.
     Work enqueued after this task will wait for this task to complete or suspend.
     */
+    try? await Task.sleep(nanoseconds: 1_000_000)
+}
+queue.async {
+    /*
+    This task begins execution once the above task suspends due to the one-second sleep.
+    */
 }
 Task {
     await queue.await {
@@ -72,6 +84,35 @@ Task {
         Work enqueued after this task will wait for this task to complete or suspend.
         */
     }
+}
+```
+
+In practice, an `ActorQueue` should be utilized with a single instance of an `actor` type to bridge nonisolated and isolated contexts:
+```
+public actor LogStore {
+
+    // MARK: Public
+
+    nonisolated
+    public func log(_ message: String) {
+        queue.async {
+            await self.append(message)
+        }
+    }
+
+    nonisolated
+    public func retrieveLogs() async -> [String] {
+        await queue.await { await self.logs }
+    }
+
+    // MARK: Private
+
+    private func append(_ message: String) {
+        logs.append(message)
+    }
+
+    private let queue = ActorQueue()
+    private var logs = [String]()
 }
 ```
 
