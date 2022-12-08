@@ -31,7 +31,7 @@ While [actors](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#
 
 ### Executing asynchronous tasks in FIFO order
 
-Use a `FIFOQueue` queue to execute asynchronous tasks enqueued from a nonisolated context in FIFO order. Tasks sent to one of these queues are guaranteed to begin _and end_ executing in the order in which they are enqueued.
+Use a `FIFOQueue` to execute asynchronous tasks enqueued from a nonisolated context in FIFO order. Tasks sent to one of these queues are guaranteed to begin _and end_ executing in the order in which they are enqueued.
 
 ```swift
 let queue = FIFOQueue()
@@ -60,7 +60,7 @@ Task {
 
 ### Sending ordered asynchronous tasks to Actors
 
-Use an `ActorQueue` queue to send ordered asynchronous tasks from a nonisolated context to an `actor` instance. Tasks sent to one of these queues are guaranteed to begin executing in the order in which they are enqueued. Ordering of execution is guaranteed up until the first [suspension point](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID639) within the called `actor` code.
+Use an `ActorQueue` to send ordered asynchronous tasks from a nonisolated context to an `actor` instance. Tasks sent to one of these queues are guaranteed to begin executing in the order in which they are enqueued. Ordering of execution is guaranteed up until the first [suspension point](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID639) within the called `actor` code.
 
 ```swift
 let queue = ActorQueue()
