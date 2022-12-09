@@ -124,21 +124,14 @@ public final class ActorQueue {
     private actor ActorExecutor {
         func suspendUntilStarted(_ task: @escaping @Sendable () async -> Void) async {
             let semaphore = Semaphore()
-            executeWithoutWaiting(task, afterSignaling: semaphore)
-            // Suspend the calling code until our enqueued task starts.
-            await semaphore.wait()
-        }
-
-        private func executeWithoutWaiting(
-            _ task: @escaping @Sendable () async -> Void,
-            afterSignaling semaphore: Semaphore)
-        {
             // Utilize the serial (but not FIFO) Actor context to execute the task without requiring the calling method to wait for the task to complete.
             Task {
                 // Signal that the task has started. As long as the `task` below interacts with another `actor` the order of execution is guaranteed.
                 await semaphore.signal()
                 await task()
             }
+            // Suspend the calling code until our enqueued task starts.
+            await semaphore.wait()
         }
     }
 
