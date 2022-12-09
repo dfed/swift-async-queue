@@ -21,8 +21,35 @@
 // SOFTWARE.
 
 /// A queue that executes asynchronous tasks enqueued from a nonisolated context.
-/// Tasks are guaranteed to begin executing in the order in which they are enqueued. However, if a task suspends it will allow tasks that were enqueued to begin executing.
+/// Tasks are guaranteed to begin executing in the order in which they are enqueued. However, if a task suspends it will allow subsequently enqueued tasks to begin executing.
 /// Asynchronous tasks sent to this queue execute as they would in an `actor` type, allowing for re-entrancy and non-FIFO behavior when an individual task suspends.
+///
+/// An `ActorQueue` is used to ensure tasks sent from a nonisolated context to a single `actor`'s isolated context begin execution in order.
+/// Here is an example of how an `ActorQueue` should be utilized within an `actor`:
+/// ```
+/// public actor LogStore {
+///
+///     nonisolated
+///     public func log(_ message: String) {
+///         queue.async {
+///             await self.append(message)
+///         }
+///     }
+///
+///     nonisolated
+///     public func retrieveLogs() async -> [String] {
+///         await queue.await { await self.logs }
+///     }
+///
+///     private func append(_ message: String) {
+///         logs.append(message)
+///     }
+///
+///     private let queue = ActorQueue()
+///     private var logs = [String]()
+/// }
+/// ```
+///
 /// - Warning: Execution order is not guaranteed unless the enqueued tasks interact with a single `actor` instance.
 public final class ActorQueue {
 

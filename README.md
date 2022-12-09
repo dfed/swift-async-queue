@@ -87,35 +87,6 @@ Task {
 }
 ```
 
-In practice, an `ActorQueue` should be utilized with a single instance of an `actor` type to bridge nonisolated and isolated contexts:
-```
-public actor LogStore {
-
-    // MARK: Public
-
-    nonisolated
-    public func log(_ message: String) {
-        queue.async {
-            await self.append(message)
-        }
-    }
-
-    nonisolated
-    public func retrieveLogs() async -> [String] {
-        await queue.await { await self.logs }
-    }
-
-    // MARK: Private
-
-    private func append(_ message: String) {
-        logs.append(message)
-    }
-
-    private let queue = ActorQueue()
-    private var logs = [String]()
-}
-```
-
 ## Requirements
 
 * Xcode 14.1 or later.
