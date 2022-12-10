@@ -71,7 +71,7 @@ final class ActorQueueTests: XCTestCase {
         await systemUnderTest.await { /* Drain the queue */ }
     }
 
-    func test_async_retainsReceiverUntilFlushed() async {
+    func test_async_executesAfterReceiverIsDeallocated() async {
         var systemUnderTest: FIFOQueue? = FIFOQueue()
         let counter = Counter()
         let expectation = self.expectation(description: #function)
