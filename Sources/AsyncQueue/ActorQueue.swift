@@ -127,19 +127,18 @@ public final class ActorQueue {
             await withUnsafeContinuation { continuation in
                 // Utilize the serial (but not FIFO) Actor context to execute the task without requiring the calling method to wait for the task to complete.
                 Task {
-                    // Call through to an instance method to ensure we're executing the below within the Actor context.
-                    // For more information, see https://github.com/apple/swift/issues/62505
-                    await execute {
-                        // Signal that the task has started. As long as the `task` below interacts with another `actor` the order of execution is guaranteed.
-                        continuation.resume()
-                        await task()
-                    }
+                    // Force this task to execute within the ActorExecutor's context by accessing an ivar on the instance.
+                    // This works around a bug when compiling with Xcode 14.1: https://github.com/apple/swift/issues/62503
+                    _ = void
+
+                    // Signal that the task has started. As long as the `task` below interacts with another `actor` the order of execution is guaranteed.
+                    continuation.resume()
+                    await task()
                 }
             }
         }
 
-        private func execute(_ task: () async -> Void) async {
-            await task()
-        }
+        private let void: Void = ()
     }
+
 }
