@@ -71,26 +71,22 @@ final class ActorQueueTests: XCTestCase {
         await systemUnderTest.await { /* Drain the queue */ }
     }
 
-    func test_async_executesAfterReceiverIsDeallocated() async {
-        var systemUnderTest: FIFOQueue? = FIFOQueue()
+    func test_async_executesEnqueuedTasksAfterReceiverIsDeallocated() async {
+        var systemUnderTest: ActorQueue? = ActorQueue()
         let counter = Counter()
         let expectation = self.expectation(description: #function)
         let semaphore = Semaphore()
         systemUnderTest?.async {
-            // Make the queue wait.
+            // Make the task wait.
             await semaphore.wait()
             await counter.incrementAndExpectCount(equals: 1)
-        }
-        systemUnderTest?.async {
-            // This async task should not execute until the semaphore is released.
-            await counter.incrementAndExpectCount(equals: 2)
             expectation.fulfill()
         }
         weak var queue = systemUnderTest
         // Nil out our reference to the queue to show that the enqueued tasks will still complete
         systemUnderTest = nil
         XCTAssertNil(queue)
-        // Signal the semaphore to unlock the remaining enqueued tasks.
+        // Signal the semaphore to unlock the enqueued tasks.
         await semaphore.signal()
 
         await waitForExpectations(timeout: 1.0)
