@@ -94,8 +94,10 @@ final class FIFOQueueTests: XCTestCase {
             await counter.incrementAndExpectCount(equals: 2)
             expectation.fulfill()
         }
+        weak var queue = systemUnderTest
         // Nil out our reference to the queue to show that the enqueued tasks will still complete
         systemUnderTest = nil
+        XCTAssertNil(queue)
         // Signal the semaphore to unlock the remaining enqueued tasks.
         await semaphore.signal()
 
