@@ -71,7 +71,6 @@ final class ActorQueueTests: XCTestCase {
         await systemUnderTest.await { /* Drain the queue */ }
     }
 
-    @MainActor
     func test_async_doesNotRetainTaskAfterExecution() async {
         final class Reference: Sendable {}
         final class ReferenceHolder: @unchecked Sendable {
@@ -110,7 +109,7 @@ final class ActorQueueTests: XCTestCase {
         // Allow the enqueued task to complete.
         await asyncSemaphore.signal()
         // Make sure the task has completed.
-        waitForExpectations(timeout: 1.0)
+        await waitForExpectations(timeout: 1.0)
 
         XCTAssertNil(referenceHolder.weakReference)
     }
