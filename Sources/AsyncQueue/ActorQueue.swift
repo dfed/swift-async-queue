@@ -128,7 +128,7 @@ public final class ActorQueue {
                 // Utilize the serial (but not FIFO) Actor context to execute the task without requiring the calling method to wait for the task to complete.
                 Task {
                     // Force this task to execute within the ActorExecutor's context by accessing an ivar on the instance.
-                    // Without this line the task executes on a random context, causing execution order to be nondeterministic.
+                    // This works around a bug when compiling with Xcode 14.1: https://github.com/apple/swift/issues/62503
                     _ = void
 
                     // Signal that the task has started. As long as the `task` below interacts with another `actor` the order of execution is guaranteed.
