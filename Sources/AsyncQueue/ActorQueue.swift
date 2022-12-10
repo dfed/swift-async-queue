@@ -123,16 +123,22 @@ public final class ActorQueue {
 
     private actor ActorExecutor {
         func suspendUntilStarted(_ task: @escaping @Sendable () async -> Void) async {
-            let semaphore = Semaphore()
-            // Utilize the serial (but not FIFO) Actor context to execute the task without requiring the calling method to wait for the task to complete.
-            Task {
-                // Signal that the task has started. As long as the `task` below interacts with another `actor` the order of execution is guaranteed.
-                await semaphore.signal()
-                await task()
-            }
             // Suspend the calling code until our enqueued task starts.
-            await semaphore.wait()
+            await withUnsafeContinuation { continuation in
+                // Utilize the serial (but not FIFO) Actor context to execute the task without requiring the calling method to wait for the task to complete.
+                Task {
+                    // Force this task to execute within the ActorExecutor's context by accessing an ivar on the instance.
+                    // Without this line the task executes on a random context, causing execution order to be nondeterministic.
+                    _ = void
+
+                    // Signal that the task has started. As long as the `task` below interacts with another `actor` the order of execution is guaranteed.
+                    continuation.resume()
+                    await task()
+                }
+            }
         }
+
+        private let void: Void = ()
     }
 
 }
