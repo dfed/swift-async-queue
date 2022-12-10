@@ -71,6 +71,29 @@ final class ActorQueueTests: XCTestCase {
         await systemUnderTest.await { /* Drain the queue */ }
     }
 
+    func test_async_retainsReceiverUntilFlushed() async {
+        var systemUnderTest: FIFOQueue? = FIFOQueue()
+        let counter = Counter()
+        let expectation = self.expectation(description: #function)
+        let semaphore = Semaphore()
+        systemUnderTest?.async {
+            // Make the queue wait.
+            await semaphore.wait()
+            await counter.incrementAndExpectCount(equals: 1)
+        }
+        systemUnderTest?.async {
+            // This async task should not execute until the semaphore is released.
+            await counter.incrementAndExpectCount(equals: 2)
+            expectation.fulfill()
+        }
+        // Nil out our reference to the queue to show that the enqueued tasks will still complete
+        systemUnderTest = nil
+        // Signal the semaphore to unlock the remaining enqueued tasks.
+        await semaphore.signal()
+
+        await waitForExpectations(timeout: 1.0)
+    }
+
     func test_async_doesNotRetainTaskAfterExecution() async {
         final class Reference: Sendable {}
         final class ReferenceHolder: @unchecked Sendable {
