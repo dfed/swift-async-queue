@@ -68,7 +68,6 @@ final class ActorQueueTests: XCTestCase {
             }
             await counter.incrementAndExpectCount(equals: 2)
         }
-        await systemUnderTest.await { /* Drain the queue */ }
     }
 
     func test_async_executesEnqueuedTasksAfterReceiverIsDeallocated() async {
