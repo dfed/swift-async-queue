@@ -60,7 +60,7 @@ final class ActorQueueTests: XCTestCase {
         await systemUnderTest.await { /* Drain the queue */ }
     }
 
-    func test_async_allowsReentrancy() async {
+    func test_await_allowsReentrancy() async {
         let counter = Counter()
         await systemUnderTest.await { [systemUnderTest] in
             await systemUnderTest.await {
