@@ -31,14 +31,14 @@
 ///
 ///     nonisolated
 ///     public func log(_ message: String) {
-///         queue.async {
-///             await self.append(message)
+///         queue.async(on: self) { myself in
+///             myself.append(message)
 ///         }
 ///     }
 ///
 ///     nonisolated
 ///     public func retrieveLogs() async -> [String] {
-///         await queue.await { await self.logs }
+///         await queue.await(on: self) { myself in myself.logs }
 ///     }
 ///
 ///     private func append(_ message: String) {
@@ -82,32 +82,38 @@ public final class ActorQueue {
 
     /// Schedules an asynchronous task for execution and immediately returns.
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
-    /// - Parameter task: The task to enqueue.
-    public func async(_ task: @escaping @Sendable () async -> Void) {
-        taskStreamContinuation.yield(task)
+    /// - Parameters:
+    ///   - isolatedActor: The actor within which the task is isolated.
+    ///   - task: The task to enqueue.
+    public func async<ActorType: Actor>(on isolatedActor: ActorType, _ task: @escaping @Sendable (isolated ActorType) async -> Void) {
+        taskStreamContinuation.yield { await task(isolatedActor) }
     }
 
     /// Schedules an asynchronous task and returns after the task is complete.
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
-    /// - Parameter task: The task to enqueue.
+    /// - Parameters:
+    ///   - isolatedActor: The actor within which the task is isolated.
+    ///   - task: The task to enqueue.
     /// - Returns: The value returned from the enqueued task.
-    public func await<T>(_ task: @escaping @Sendable () async -> T) async -> T {
+    public func await<ActorType: Actor, T>(on isolatedActor: isolated ActorType, _ task: @escaping @Sendable (isolated ActorType) async -> T) async -> T {
         await withUnsafeContinuation { continuation in
             taskStreamContinuation.yield {
-                continuation.resume(returning: await task())
+                continuation.resume(returning: await task(isolatedActor))
             }
         }
     }
 
     /// Schedules an asynchronous throwing task and returns after the task is complete.
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
-    /// - Parameter task: The task to enqueue.
+    /// - Parameters:
+    ///   - isolatedActor: The actor within which the task is isolated.
+    ///   - task: The task to enqueue.
     /// - Returns: The value returned from the enqueued task.
-    public func await<T>(_ task: @escaping @Sendable () async throws -> T) async throws -> T {
+    public func await<ActorType: Actor, T>(on isolatedActor: isolated ActorType, _ task: @escaping @Sendable (isolated ActorType) async throws -> T) async throws -> T {
         try await withUnsafeThrowingContinuation { continuation in
             taskStreamContinuation.yield {
                 do {
-                    continuation.resume(returning: try await task())
+                    continuation.resume(returning: try await task(isolatedActor))
                 } catch {
                     continuation.resume(throwing: error)
                 }
