@@ -63,28 +63,32 @@ Task {
 
 ### Sending ordered asynchronous tasks to Actors
 
-Use an `ActorQueue` to send ordered asynchronous tasks from a nonisolated context to an `actor` instance. Tasks sent to one of these queues are guaranteed to begin executing in the order in which they are enqueued. Ordering of execution is guaranteed up until the first [suspension point](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID639) within the called `actor` code.
+Use an `ActorQueue` to send ordered asynchronous tasks from a nonisolated context to an `actor` instance's isolated `async` context. Tasks sent to one of these queues are guaranteed to begin executing in the order in which they are enqueued. Ordering of execution is guaranteed up until the first [suspension point](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID639) within the called `actor` code.
 
 ```swift
+let targetActor = MyActor()
 let queue = ActorQueue()
-queue.async {
+queue.async(on: targetActor) { targetActor in
     /*
     `async` context that executes after all other enqueued work has begun executing.
     Work enqueued after this task will wait for this task to complete or suspend.
+    This task executes on the `targetActor`'s isolated context.
     */
     try? await Task.sleep(nanoseconds: 1_000_000)
 }
-queue.async {
+queue.async(on: targetActor) { targetActor in
     /*
     This task begins execution once the above task suspends due to the one-second sleep.
+    This task executes on the `targetActor`'s isolated context.
     */
 }
 Task {
-    await queue.await {
+    await queue.await(on: targetActor) { targetActor in
         /*
         `async` context that can return a value or throw an error.
         Executes after all other enqueued work has begun executing.
         Work enqueued after this task will wait for this task to complete or suspend.
+        This task executes on the targetActor's isolated context.
         */
     }
 }
