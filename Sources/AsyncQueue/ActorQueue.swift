@@ -26,7 +26,7 @@
 ///
 /// An `ActorQueue` is used to ensure tasks sent from a nonisolated context to a single `actor`'s isolated context begin execution in order.
 /// Here is an example of how an `ActorQueue` should be utilized within an `actor`:
-/// ```
+/// ```swift
 /// public actor LogStore {
 ///
 ///     nonisolated

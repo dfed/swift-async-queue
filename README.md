@@ -12,7 +12,7 @@ A library of queues that enable sending ordered tasks from synchronous to asynch
 
 Tasks sent from a synchronous context to an asynchronous context in Swift Concurrency are inherently unordered. Consider the following test:
 
-```
+```swift
 @MainActor
 func test_mainActor_taskOrdering() async {
     var counter = 0
