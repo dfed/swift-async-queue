@@ -20,12 +20,42 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-/// A queue that enables sending FIFO-ordered tasks from synchronous to asynchronous contexts
-public final class AsyncQueue: Sendable {
+/// A queue that executes asynchronous tasks enqueued from a nonisolated context.
+/// Tasks are guaranteed to begin executing in the order in which they are enqueued. However, if a task suspends it will allow subsequently enqueued tasks to begin executing.
+/// Asynchronous tasks sent to this queue execute as they would in an `actor` type, allowing for re-entrancy and non-FIFO behavior when an individual task suspends.
+///
+/// An `ActorQueue` is used to ensure tasks sent from a nonisolated context to a single `actor`'s isolated context begin execution in order.
+/// Here is an example of how an `ActorQueue` should be utilized within an `actor`:
+/// ```swift
+/// public actor LogStore {
+///
+///     nonisolated
+///     public func log(_ message: String) {
+///         queue.async {
+///             await self.append(message)
+///         }
+///     }
+///
+///     nonisolated
+///     public func retrieveLogs() async -> [String] {
+///         await queue.await { await self.logs }
+///     }
+///
+///     private func append(_ message: String) {
+///         logs.append(message)
+///     }
+///
+///     private let queue = ActorQueue()
+///     private var logs = [String]()
+/// }
+/// ```
+///
+/// - Warning: Execution order is not guaranteed unless the enqueued tasks interact with a single `actor` instance.
+public final class ActorQueue {
 
     // MARK: Initialization
 
-    /// Instantiates an asynchronous queue.
+    /// Instantiates an actor queue.
     /// - Parameter priority: The baseline priority of the tasks added to the asynchronous queue.
     public init(priority: TaskPriority? = nil) {
         var capturedTaskStreamContinuation: AsyncStream<@Sendable () async -> Void>.Continuation? = nil
@@ -36,9 +66,10 @@ public final class AsyncQueue: Sendable {
         // If this force-unwrap fails, something is fundamentally broken in the Swift runtime.
         taskStreamContinuation = capturedTaskStreamContinuation!
 
-        streamTask = Task.detached(priority: priority) {
+        Task.detached(priority: priority) {
+            let executor = ActorExecutor()
             for await task in taskStream {
-                await task()
+                await executor.suspendUntilStarted(task)
             }
         }
     }
@@ -50,14 +81,14 @@ public final class AsyncQueue: Sendable {
     // MARK: Public
 
     /// Schedules an asynchronous task for execution and immediately returns.
-    /// The scheduled task will not execute until all prior tasks have completed.
+    /// The scheduled task will not execute until all prior tasks have completed or suspended.
     /// - Parameter task: The task to enqueue.
     public func async(_ task: @escaping @Sendable () async -> Void) {
         taskStreamContinuation.yield(task)
     }
 
-    /// Schedules an asynchronous throwing task and returns after the task is complete.
-    /// The scheduled task will not execute until all prior tasks have completed.
+    /// Schedules an asynchronous task and returns after the task is complete.
+    /// The scheduled task will not execute until all prior tasks have completed or suspended.
     /// - Parameter task: The task to enqueue.
     /// - Returns: The value returned from the enqueued task.
     public func await<T>(_ task: @escaping @Sendable () async -> T) async -> T {
@@ -68,8 +99,8 @@ public final class AsyncQueue: Sendable {
         }
     }
 
-    /// Schedules an asynchronous task and returns after the task is complete.
-    /// The scheduled task will not execute until all prior tasks have completed.
+    /// Schedules an asynchronous throwing task and returns after the task is complete.
+    /// The scheduled task will not execute until all prior tasks have completed or suspended.
     /// - Parameter task: The task to enqueue.
     /// - Returns: The value returned from the enqueued task.
     public func await<T>(_ task: @escaping @Sendable () async throws -> T) async throws -> T {
@@ -86,6 +117,28 @@ public final class AsyncQueue: Sendable {
 
     // MARK: Private
 
-    private let streamTask: Task<Void, Never>
     private let taskStreamContinuation: AsyncStream<@Sendable () async -> Void>.Continuation
+
+    // MARK: - ActorExecutor
+
+    private actor ActorExecutor {
+        func suspendUntilStarted(_ task: @escaping @Sendable () async -> Void) async {
+            // Suspend the calling code until our enqueued task starts.
+            await withUnsafeContinuation { continuation in
+                // Utilize the serial (but not FIFO) Actor context to execute the task without requiring the calling method to wait for the task to complete.
+                Task {
+                    // Force this task to execute within the ActorExecutor's context by accessing an ivar on the instance.
+                    // This works around a bug when compiling with Xcode 14.1: https://github.com/apple/swift/issues/62503
+                    _ = void
+
+                    // Signal that the task has started. As long as the `task` below interacts with another `actor` the order of execution is guaranteed.
+                    continuation.resume()
+                    await task()
+                }
+            }
+        }
+
+        private let void: Void = ()
+    }
+
 }

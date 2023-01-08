@@ -24,14 +24,14 @@ import XCTest
 
 @testable import AsyncQueue
 
-final class AsyncQueueTests: XCTestCase {
+final class FIFOQueueTests: XCTestCase {
 
     // MARK: XCTestCase
 
     override func setUp() async throws {
         try await super.setUp()
 
-        systemUnderTest = AsyncQueue()
+        systemUnderTest = FIFOQueue()
     }
 
     // MARK: Behavior Tests
@@ -79,8 +79,8 @@ final class AsyncQueueTests: XCTestCase {
         await systemUnderTest.await { /* Drain the queue */ }
     }
 
-    func test_async_retainsReceiverUntilFlushed() async {
-        var systemUnderTest: AsyncQueue? = AsyncQueue()
+    func test_async_executesAfterReceiverIsDeallocated() async {
+        var systemUnderTest: FIFOQueue? = FIFOQueue()
         let counter = Counter()
         let expectation = self.expectation(description: #function)
         let semaphore = Semaphore()
@@ -94,8 +94,10 @@ final class AsyncQueueTests: XCTestCase {
             await counter.incrementAndExpectCount(equals: 2)
             expectation.fulfill()
         }
+        weak var queue = systemUnderTest
         // Nil out our reference to the queue to show that the enqueued tasks will still complete
         systemUnderTest = nil
+        XCTAssertNil(queue)
         // Signal the semaphore to unlock the remaining enqueued tasks.
         await semaphore.signal()
 
@@ -170,58 +172,5 @@ final class AsyncQueueTests: XCTestCase {
 
     // MARK: Private
 
-    private var systemUnderTest = AsyncQueue()
-
-    // MARK: - Counter
-
-    private actor Counter {
-        func incrementAndExpectCount(equals expectedCount: Int, file: StaticString = #filePath, line: UInt = #line) {
-            increment()
-            XCTAssertEqual(expectedCount, count, file: file, line: line)
-        }
-
-        func increment() {
-            count += 1
-        }
-
-        var count = 0
-    }
-
-    // MARK: - Semaphore
-
-    private actor Semaphore {
-
-        func wait() async {
-            count -= 1
-            guard count < 0 else {
-                // We don't need to wait because count is greater than or equal to zero.
-                return
-            }
-
-            await withCheckedContinuation { continuation in
-                continuations.append(continuation)
-            }
-        }
-
-        func signal() {
-            count += 1
-            guard !isWaiting else {
-                // Continue waiting.
-                return
-            }
-
-            for continuation in continuations {
-                continuation.resume()
-            }
-
-            continuations.removeAll()
-        }
-
-        var isWaiting: Bool {
-            count < 0
-        }
-
-        private var continuations = [CheckedContinuation<Void, Never>]()
-        private var count = 0
-    }
+    private var systemUnderTest = FIFOQueue()
 }

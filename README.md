@@ -6,26 +6,89 @@
 [![License](https://img.shields.io/cocoapods/l/AsyncQueue.svg)](https://cocoapods.org/pods/AsyncQueue)
 [![Platform](https://img.shields.io/cocoapods/p/AsyncQueue.svg)](https://cocoapods.org/pods/AsyncQueue)
 
-A queue that enables sending FIFO-ordered tasks from synchronous to asynchronous contexts.
+A library of queues that enable sending ordered tasks from synchronous to asynchronous contexts.
 
-## Usage
+## Task Ordering and Swift Concurrency
 
-### Basic Initialization
+Tasks sent from a synchronous context to an asynchronous context in Swift Concurrency are inherently unordered. Consider the following test:
 
 ```swift
-let asyncQueue = AsyncQueue()
+@MainActor
+func test_mainActor_taskOrdering() async {
+    var counter = 0
+    var tasks = [Task<Void, Never>]()
+    for iteration in 1...100 {
+        tasks.append(Task {
+            counter += 1
+            XCTAssertEqual(counter, iteration) // often fails
+        })
+    }
+    for task in tasks {
+        _ = await task.value
+    }
+}
 ```
 
-### Sending events from a synchronous context
+Despite the spawned `Task` inheriting the serial `@MainActor` execution context, the ordering of the scheduled asynchronous work is not guaranteed.
+
+While [actors](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID645) are great at serializing tasks, there is no simple way in the standard Swift library to send ordered tasks to them from a synchronous context.
+
+### Executing asynchronous tasks in FIFO order
+
+Use a `FIFOQueue` to execute asynchronous tasks enqueued from a nonisolated context in FIFO order. Tasks sent to one of these queues are guaranteed to begin _and end_ executing in the order in which they are enqueued.
 
 ```swift
-asyncQueue.async { /* awaitable context that executes after all other enqueued work is completed */ }
+let queue = FIFOQueue()
+queue.async {
+    /*
+    `async` context that executes after all other enqueued work is completed.
+    Work enqueued after this task will wait for this task to complete.
+    */
+    try? await Task.sleep(nanoseconds: 1_000_000)
+}
+queue.async {
+    /*
+    This task begins execution once the above one-second sleep completes.
+    */
+}
+Task {
+    await queue.await {
+        /*
+        `async` context that can return a value or throw an error.
+        Executes after all other enqueued work is completed.
+        Work enqueued after this task will wait for this task to complete.
+        */
+    }
+}
 ```
 
-### Awaiting work from an asynchronous context
+### Sending ordered asynchronous tasks to Actors
+
+Use an `ActorQueue` to send ordered asynchronous tasks from a nonisolated context to an `actor` instance. Tasks sent to one of these queues are guaranteed to begin executing in the order in which they are enqueued. Ordering of execution is guaranteed up until the first [suspension point](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID639) within the called `actor` code.
 
 ```swift
-await asyncQueue.await { /* throw-able, return-able, awaitable context that executes after all other enqueued work is completed */ }
+let queue = ActorQueue()
+queue.async {
+    /*
+    `async` context that executes after all other enqueued work has begun executing.
+    Work enqueued after this task will wait for this task to complete or suspend.
+    */
+    try? await Task.sleep(nanoseconds: 1_000_000)
+}
+queue.async {
+    /*
+    This task begins execution once the above task suspends due to the one-second sleep.
+    */
+}
+Task {
+    await queue.await {
+        /*
+        `async` context that can return a value or throw an error.
+        Executes after all other enqueued work has begun executing.
+        Work enqueued after this task will wait for this task to complete or suspend.
+        */
+    }
+}
 ```
 
 ## Requirements
@@ -45,7 +108,7 @@ To install swift-async-queue in your iOS project with [Swift Package Manager](ht
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/dfed/swift-async-queue", from: "0.0.1"),
+    .package(url: "https://github.com/dfed/swift-async-queue", from: "0.1.0"),
 ]
 ```
 
@@ -55,7 +118,7 @@ To install swift-async-queue in your iOS project with [CocoaPods](http://cocoapo
 
 ```
 platform :ios, '13.0'
-pod 'AsyncQueue', '~> 0.1'
+pod 'AsyncQueue', '~> 0.1.0'
 ```
 
 ## Contributing
