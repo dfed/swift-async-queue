@@ -49,78 +49,56 @@ final class SemaphoreTests: XCTestCase {
          1. We need to call `wait()` before `signal()`
          2. We need to ensure that the `wait()` call suspends _before_ we call `signal()`
          3. We can't `await` the `wait()` call before calling `signal()` since that would effectively deadlock the test.
+         4. We must utilize a single actor's isolated context to avoid accidental interleaving when suspending to communicate across actor contexts.
 
          In order to ensure that we are executing the `wait()` calls before we call `signal()` _without awaiting a `wait()` call_,
          we utilize an Actor (which has inherently ordered execution) to enqueue ordered `Task`s. We make calls to this actor
          `await` the beginning of the `Task` to ensure that each `Task` has begun before resuming the test's execution.
          */
 
-        actor CountingExecutor {
-            /// Enqueues an asynchronous task. This method suspends the caller until the asynchronous task has begun, ensuring ordered execution of enqueued tasks.
-            /// - Parameter task: A unit of work that returns work to execute after the task completes and the count is incremented.
-            func enqueueAndCount(_ task: @escaping @Sendable () async -> (() async -> Void)?) async {
-                // Await the start of the soon-to-be-enqueued `Task` with a continuation.
-                await withCheckedContinuation { continuation in
-                    // Re-enter the actor context but don't wait for the result.
-                    Task {
-                        // Now that we're back in the actor context, resume the calling code.
-                        continuation.resume()
-                        let executeAfterIncrement = await task()
-                        countedTasksCompleted += 1
-                        await executeAfterIncrement?()
-                    }
-                }
-            }
-
-            func execute(_ task: @Sendable () async throws -> Void) async rethrows {
-                try await task()
-            }
-
-            var countedTasksCompleted = 0
-        }
-
-        let executor = CountingExecutor()
         let iterationCount = 1_000
+        /// A counter that will only be accessed from within the `systemUnderTest`'s context
+        let unsafeCounter = UnsafeCounter()
 
         for _ in 1...iterationCount {
-            await executor.enqueueAndCount {
-                let didSuspend = await self.systemUnderTest.wait()
+            await systemUnderTest.enqueueAndCount(using: unsafeCounter) { systemUnderTest in
+                let didSuspend = await systemUnderTest.wait()
                 XCTAssertTrue(didSuspend)
 
-                return {
+                return { systemUnderTest in
                     // Signal that the suspended wait call above has resumed.
                     // This signal allows us to `wait()` for all of these enqueued `wait()` tasks to have completed later in this test.
-                    await self.systemUnderTest.signal()
+                    systemUnderTest.signal()
                 }
             }
         }
 
         // Loop one fewer than iterationCount.
         for _ in 1..<iterationCount {
-            await executor.execute {
-                await self.systemUnderTest.signal()
+            await systemUnderTest.execute { systemUnderTest in
+                systemUnderTest.signal()
             }
         }
 
-        await executor.execute {
+        await systemUnderTest.execute { systemUnderTest in
             // Give each suspended `wait` task an opportunity to resume (if they were to resume, which they won't) before we check the count.
             for _ in 1...iterationCount {
                 await Task.yield()
             }
 
             // The count will still be zero each time because we have executed one more `wait` than `signal` calls.
-            let completedCountedTasks = await executor.countedTasksCompleted
+            let completedCountedTasks = unsafeCounter.countedTasksCompleted
             XCTAssertEqual(completedCountedTasks, 0)
 
             // Signal one last time, enabling all of the original `wait` calls to resume.
-            await self.systemUnderTest.signal()
+            systemUnderTest.signal()
 
             for _ in 1...iterationCount {
                 // Wait for all enqueued `wait`s to have completed and signaled their completion.
-                await self.systemUnderTest.wait()
+                await systemUnderTest.wait()
             }
 
-            let tasksCompleted = await executor.countedTasksCompleted
+            let tasksCompleted = unsafeCounter.countedTasksCompleted
             XCTAssertEqual(iterationCount, tasksCompleted)
         }
     }
@@ -134,4 +112,34 @@ final class SemaphoreTests: XCTestCase {
     // MARK: Private
 
     private var systemUnderTest = Semaphore()
+}
+
+// MARK: - Semaphore Extension
+
+private extension Semaphore {
+    /// Enqueues an asynchronous task. This method suspends the caller until the asynchronous task has begun, ensuring ordered execution of enqueued tasks.
+    /// - Parameter task: A unit of work that returns work to execute after the task completes and the count is incremented.
+    func enqueueAndCount(using counter: UnsafeCounter, _ task: @escaping @Sendable (isolated Semaphore) async -> ((isolated Semaphore) -> Void)?) async {
+        // Await the start of the soon-to-be-enqueued `Task` with a continuation.
+        await withCheckedContinuation { continuation in
+            // Re-enter the actor context but don't wait for the result.
+            Task {
+                // Now that we're back in the actor context, resume the calling code.
+                continuation.resume()
+                let executeAfterIncrement = await task(self)
+                counter.countedTasksCompleted += 1
+                executeAfterIncrement?(self)
+            }
+        }
+    }
+
+    func execute(_ task: @Sendable (isolated Semaphore) async throws -> Void) async rethrows {
+        try await task(self)
+    }
+}
+
+// MARK: - UnsafeCounter
+
+private final class UnsafeCounter: @unchecked Sendable {
+    var countedTasksCompleted = 0
 }
