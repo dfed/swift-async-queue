@@ -12,7 +12,3 @@ coverage:
       default:
         threshold: 0.25%
     patch: off
-
-ignore:
-  # This package is not shipped.
-  - "Tests"
