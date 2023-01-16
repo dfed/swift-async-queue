@@ -38,7 +38,7 @@ public final class FIFOQueue: Sendable {
         // If this force-unwrap fails, something is fundamentally broken in the Swift runtime.
         taskStreamContinuation = capturedTaskStreamContinuation!
 
-        streamTask = Task.detached(priority: priority) {
+        Task.detached(priority: priority) {
             for await task in taskStream {
                 await task()
             }
@@ -88,6 +88,5 @@ public final class FIFOQueue: Sendable {
 
     // MARK: Private
 
-    private let streamTask: Task<Void, Never>
     private let taskStreamContinuation: AsyncStream<@Sendable () async -> Void>.Continuation
 }
