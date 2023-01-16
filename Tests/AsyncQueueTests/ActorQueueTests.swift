@@ -33,7 +33,7 @@ final class ActorQueueTests: XCTestCase {
 
         systemUnderTest = ActorQueue<Counter>()
         counter = Counter()
-        systemUnderTest.setTargetContext(to: counter)
+        systemUnderTest.adoptExecutionContext(of: counter)
     }
 
     // MARK: Behavior Tests
@@ -42,7 +42,7 @@ final class ActorQueueTests: XCTestCase {
         let systemUnderTest = ActorQueue<Counter>()
         var counter: Counter? = Counter()
         weak var weakCounter = counter
-        systemUnderTest.setTargetContext(to: counter!)
+        systemUnderTest.adoptExecutionContext(of: counter!)
         counter = nil
         XCTAssertNil(weakCounter)
     }
@@ -51,7 +51,7 @@ final class ActorQueueTests: XCTestCase {
         let systemUnderTest = ActorQueue<Counter>()
         var counter: Counter? = Counter()
         weak var weakCounter = counter
-        systemUnderTest.setTargetContext(to: counter!)
+        systemUnderTest.adoptExecutionContext(of: counter!)
 
         let semaphore = Semaphore()
         systemUnderTest.async { counter in
@@ -75,7 +75,7 @@ final class ActorQueueTests: XCTestCase {
     func test_async_startsExecutionOfNextTaskAfterSuspension() async {
         let systemUnderTest = ActorQueue<Semaphore>()
         let semaphore = Semaphore()
-        systemUnderTest.setTargetContext(to: semaphore)
+        systemUnderTest.adoptExecutionContext(of: semaphore)
 
         systemUnderTest.async { semaphore in
             await semaphore.wait()
@@ -100,7 +100,7 @@ final class ActorQueueTests: XCTestCase {
 
     func test_async_executesEnqueuedTasksAfterReceiverIsDeallocated() async {
         var systemUnderTest: ActorQueue<Counter>? = ActorQueue()
-        systemUnderTest?.setTargetContext(to: counter)
+        systemUnderTest?.adoptExecutionContext(of: counter)
 
         let expectation = self.expectation(description: #function)
         let semaphore = Semaphore()
@@ -138,7 +138,7 @@ final class ActorQueueTests: XCTestCase {
         let asyncSemaphore = Semaphore()
         let syncSemaphore = Semaphore()
         let systemUnderTest = ActorQueue<Semaphore>()
-        systemUnderTest.setTargetContext(to: syncSemaphore)
+        systemUnderTest.adoptExecutionContext(of: syncSemaphore)
 
         let expectation = self.expectation(description: #function)
         systemUnderTest.async { [reference = referenceHolder.reference] syncSemaphore in

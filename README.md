@@ -16,19 +16,20 @@ Tasks sent from a synchronous context to an asynchronous context in Swift Concur
 @MainActor
 func testMainActorTaskOrdering() async {
     actor Counter {
-        func increment() -> Int {
+        func incrementAndAssertCountEquals(_ expectedCount: Int) {
             count += 1
-            return count
+            let incrementedCount = count
+            XCTAssertEqual(incrementedCount, expectedCount) // often fails
         }
-        var count = 0
+
+        private var count = 0
     }
 
     let counter = Counter()
     var tasks = [Task<Void, Never>]()
     for iteration in 1...100 {
         tasks.append(Task {
-            let incrementedCount = await counter.increment()
-            XCTAssertEqual(incrementedCount, iteration) // often fails
+            await counter.incrementAndAssertCountEquals(iteration)
         })
     }
     for task in tasks {
@@ -43,109 +44,79 @@ While [actors](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#
 
 ### Executing asynchronous tasks in FIFO order
 
-Use a `FIFOQueue` to execute asynchronous tasks enqueued from a nonisolated context in FIFO order. Tasks sent to one of these queues are guaranteed to begin _and end_ executing in the order in which they are enqueued.
+Use a `FIFOQueue` to execute asynchronous tasks enqueued from a nonisolated context in FIFO order. Tasks sent to one of these queues are guaranteed to begin _and end_ executing in the order in which they are enqueued. A `FIFOQueue` executes tasks in a similar manner to a `DispatchQueue`: enqueued tasks executes atomically, and a `FIFOQueue` task will deadlock the queue if it awaits results from the queue on which it is executing.
 
-```swift
-let queue = FIFOQueue()
-queue.async {
-    /*
-    `async` context that executes after all other enqueued work is completed.
-    Work enqueued after this task will wait for this task to complete.
-    */
-    try? await Task.sleep(nanoseconds: 1_000_000)
-}
-queue.async {
-    /*
-    This task begins execution once the above one-second sleep completes.
-    */
-}
-await queue.await {
-    /*
-    `async` context that can return a value or throw an error.
-    Executes after all other enqueued work is completed.
-    Work enqueued after this task will wait for this task to complete.
-    */
-}
-```
-
-With a `FIFOQueue` you can easily execute asynchronous tasks from a nonisolated context in FIFO order:
+A `FIFOQueue` can easily execute asynchronous tasks from a nonisolated context in FIFO order:
 ```swift
 func testFIFOQueueOrdering() async {
     actor Counter {
-        func increment() -> Int {
-            count += 1
-            return count
+        nonisolated
+        func incrementAndAssertCountEquals(_ expectedCount: Int) {
+            queue.async {
+                await self.increment()
+                let incrementedCount = await self.count
+                XCTAssertEqual(incrementedCount, expectedCount) // always succeeds
+            }
         }
+
+        nonisolated
+        func flushQueue() async {
+            await queue.await { }
+        }
+
+        func increment() {
+            count += 1
+        }
+
         var count = 0
+
+        private let queue = FIFOQueue()
     }
 
     let counter = Counter()
-    let queue = FIFOQueue()
     for iteration in 1...100 {
-        queue.async {
-            let incrementedCount = await counter.increment()
-            XCTAssertEqual(incrementedCount, iteration) // always succeeds
-        }
+        counter.incrementAndAssertCountEquals(iteration)
     }
-    await queue.await { }
+    await counter.flushQueue()
 }
 ```
 
+FIFO execution has a key downside: the queue must wait for all previously enqueued work – including suspended work – to complete before new work can begin. If you desire new work to start when a prior task suspends, utilize an `ActorQueue`.
+
 ### Sending ordered asynchronous tasks to Actors from a nonisolated context
 
-Use an `ActorQueue` to send ordered asynchronous tasks to an `actor`'s isolated context from a nonisolated and synchronous context. Tasks sent to an actor queue are guaranteed to begin executing in the order in which they are enqueued. Ordering of execution is guaranteed up until the first [suspension point](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID639) within the enqueued task.
+Use an `ActorQueue` to send ordered asynchronous tasks to an `actor`’s isolated context from nonisolated or synchronous contexts. Tasks sent to an actor queue are guaranteed to begin executing in the order in which they are enqueued. However, unlike a `FIFOQueue`, execution order is guaranteed only until the first [suspension point](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID639) within the enqueued task. An `ActorQueue` executes tasks within the its adopted actor’s isolated context, resulting in `ActorQueue` task execution having the same properties as `actor` code execution: code between suspension points is executed atomically, and tasks sent to a single `ActorQueue` can await results from the queue without deadlocking.
 
-```swift
-let queue = ActorQueue()
-queue.setTargetContext(to: actor)
-queue.async { actor in
-    /*
-    `async` context that executes after all other enqueued work has begun executing.
-    Work enqueued after this task will wait for this task to complete or suspend.
-    */
-    await actor.longRunningTask()
-}
-queue.async { actor in
-    /*
-    This task begins execution once the above task suspends due to the long-running task.
-    */
-}
-await queue.await { actor in
-    /*
-    `async` context that can return a value or throw an error.
-    Executes after all other enqueued work has begun executing.
-    Work enqueued after this task will wait for this task to complete or suspend.
-    */
-}
+An instance of an `ActorQueue` is designed to be utilized by a single `actor` instance: tasks sent to an `ActorQueue` utilize the isolated context of the queue‘s adopted `actor` to serialize tasks. As such, the lifecycle of any `ActorQueue` should not exceed the lifecycle of its `actor`. It is strongly recommended that an `ActorQueue` be a `let` constant on the adopted `actor`. Additionally, an `actor` utilizing an `ActorQueue` should set the adopted execution context of the queue to `self` within the `actor`’s `init`. Failing to set an adopted execution context prior to enqueuing work on an `ActorQueue` will result in a crash.
 
-With an `ActorQueue` you can easily begin execution of asynchronous tasks from a nonisolated context in order:
+An `ActorQueue` can easily enqueue tasks that execute on an actor’s isolated context from a nonisolated context in order:
 ```swift
 func testActorQueueOrdering() async {
     actor Counter {
         init() {
-            queue.setTargetContext(to: self)
+            queue.adoptExecutionContext(of: self)
         }
 
         nonisolated
-        func increment(expectedCount: Int) {
+        func incrementAndAssertCountEquals(_ expectedCount: Int) {
             queue.async { myself in
                 myself.count += 1
                 XCTAssertEqual(expectedCount, myself.count) // always succeeds
             }
         }
-        var count = 0
 
         nonisolated
         func flushQueue() async {
             await queue.await { _ in }
         }
 
+        private var count = 0
         private let queue = ActorQueue<Counter>()
     }
 
     let counter = Counter()
     for iteration in 1...100 {
-        counter.increment(expectedCount: iteration)
+        counter.incrementAndAssertCountEquals(iteration)
     }
     await counter.flushQueue()
 }
