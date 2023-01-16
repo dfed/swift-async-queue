@@ -20,12 +20,12 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-/// A queue that enables enqueing ordered asynchronous tasks from a nonisolated context onto a executionContext `actor`'s isolated context.
+/// A queue that enables enqueing ordered asynchronous tasks from a nonisolated context onto an adopted actor's isolated context.
 /// Tasks are guaranteed to begin executing in the order in which they are enqueued. However, if a task suspends it will allow subsequently enqueued tasks to begin executing.
-/// Asynchronous tasks sent to this queue execute as they would in an `actor` type, allowing for re-entrancy and non-FIFO behavior when an individual task suspends.
+/// This queue exhibits the execution behavior of an actor: tasks sent to this queue can re-enter the queue, and tasks may execute in non-FIFO order when a task suspends.
 ///
-/// An `ActorQueue` is used to ensure tasks sent from a nonisolated context to a single `actor`'s isolated context begin execution in order.
-/// Here is an example of how an `ActorQueue` should be utilized within an `actor`:
+/// An `ActorQueue` ensures tasks sent from a nonisolated context to a single actor's isolated context begin execution in order.
+/// Here is an example of how an `ActorQueue` should be utilized within an actor:
 /// ```swift
 /// public actor LogStore {
 ///
@@ -50,7 +50,7 @@
 /// }
 /// ```
 ///
-/// - Warning: The lifecycle of an `ActorQueue` should not exceed that of the adopted `actor`.
+/// - Warning: The lifecycle of an `ActorQueue` should not exceed that of the adopted actor.
 public final class ActorQueue<ActorType: Actor> {
 
     // MARK: Initialization
@@ -91,14 +91,14 @@ public final class ActorQueue<ActorType: Actor> {
 
     /// Schedules an asynchronous task for execution and immediately returns.
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
-    /// - Parameter task: The task to enqueue.
+    /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
     public func async(_ task: @escaping @Sendable (isolated ActorType) async -> Void) {
         taskStreamContinuation.yield(ActorTask(executionContext: executionContext!, task: task))
     }
 
     /// Schedules an asynchronous task and returns after the task is complete.
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
-    /// - Parameter task: The task to enqueue.
+    /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
     /// - Returns: The value returned from the enqueued task.
     public func await<T>(_ task: @escaping @Sendable (isolated ActorType) async -> T) async -> T {
         let executionContext = self.executionContext! // Capture/retain the executionContext before suspending.
@@ -111,7 +111,7 @@ public final class ActorQueue<ActorType: Actor> {
 
     /// Schedules an asynchronous throwing task and returns after the task is complete.
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
-    /// - Parameter task: The task to enqueue.
+    /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
     /// - Returns: The value returned from the enqueued task.
     public func await<T>(_ task: @escaping @Sendable (isolated ActorType) async throws -> T) async throws -> T {
         let executionContext = self.executionContext! // Capture/retain the executionContext before suspending.
@@ -147,7 +147,7 @@ extension Actor {
         await withUnsafeContinuation { continuation in
             // Utilize the serial (but not FIFO) Actor context to execute the task without requiring the calling method to wait for the task to complete.
             Task {
-                // Signal that the task has started. As long as the `task` below interacts with another `actor` the order of execution is guaranteed.
+                // Signal that the task has started. Since this `task` is executing on the current actor's execution context, the order of execution is guaranteed.
                 continuation.resume()
                 await task(self)
             }

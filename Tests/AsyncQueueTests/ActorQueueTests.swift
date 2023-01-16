@@ -38,7 +38,7 @@ final class ActorQueueTests: XCTestCase {
 
     // MARK: Behavior Tests
 
-    func test_begin_doesNotRetainTarget() {
+    func test_adoptExecutionContext_doesNotRetainActor() {
         let systemUnderTest = ActorQueue<Counter>()
         var counter: Counter? = Counter()
         weak var weakCounter = counter
@@ -47,7 +47,7 @@ final class ActorQueueTests: XCTestCase {
         XCTAssertNil(weakCounter)
     }
 
-    func test_async_retainsTargetUntilQueueFlushes() async {
+    func test_async_retainsAdoptedActorUntilQueueFlushes() async {
         let systemUnderTest = ActorQueue<Counter>()
         var counter: Counter? = Counter()
         weak var weakCounter = counter
@@ -61,6 +61,22 @@ final class ActorQueueTests: XCTestCase {
         counter = nil
         XCTAssertNotNil(weakCounter)
         await semaphore.signal()
+    }
+
+    func test_async_taskParameterIsAdoptedActor() async {
+        let semaphore = Semaphore()
+        systemUnderTest.async { counter in
+            XCTAssertTrue(counter === self.counter)
+            await semaphore.signal()
+        }
+
+        await semaphore.wait()
+    }
+
+    func test_await_taskParameterIsAdoptedActor() async {
+        await systemUnderTest.await { counter in
+            XCTAssertTrue(counter === self.counter)
+        }
     }
 
     func test_async_sendsEventsInOrder() async {
