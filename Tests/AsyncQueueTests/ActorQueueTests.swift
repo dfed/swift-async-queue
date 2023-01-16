@@ -31,54 +31,83 @@ final class ActorQueueTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
 
-        systemUnderTest = ActorQueue()
+        systemUnderTest = ActorQueue<Counter>()
+        counter = Counter()
+        systemUnderTest.setTargetContext(to: counter)
     }
 
     // MARK: Behavior Tests
 
+    func test_begin_doesNotRetainTarget() {
+        let systemUnderTest = ActorQueue<Counter>()
+        var counter: Counter? = Counter()
+        weak var weakCounter = counter
+        systemUnderTest.setTargetContext(to: counter!)
+        counter = nil
+        XCTAssertNil(weakCounter)
+    }
+
+    func test_async_retainsTargetUntilQueueFlushes() async {
+        let systemUnderTest = ActorQueue<Counter>()
+        var counter: Counter? = Counter()
+        weak var weakCounter = counter
+        systemUnderTest.setTargetContext(to: counter!)
+
+        let semaphore = Semaphore()
+        systemUnderTest.async { counter in
+            await semaphore.wait()
+        }
+
+        counter = nil
+        XCTAssertNotNil(weakCounter)
+        await semaphore.signal()
+    }
+
     func test_async_sendsEventsInOrder() async {
-        let counter = Counter()
         for iteration in 1...1_000 {
-            systemUnderTest.async {
-                await counter.incrementAndExpectCount(equals: iteration)
+            systemUnderTest.async { counter in
+                counter.incrementAndExpectCount(equals: iteration)
             }
         }
-        await systemUnderTest.await { /* Drain the queue */ }
+        await systemUnderTest.await { _ in /* Drain the queue */ }
     }
 
     func test_async_startsExecutionOfNextTaskAfterSuspension() async {
+        let systemUnderTest = ActorQueue<Semaphore>()
         let semaphore = Semaphore()
-        systemUnderTest.async {
+        systemUnderTest.setTargetContext(to: semaphore)
+
+        systemUnderTest.async { semaphore in
             await semaphore.wait()
         }
-        systemUnderTest.async {
+        systemUnderTest.async { semaphore in
             // Signal the semaphore from the actor queue.
             // If the actor queue were FIFO, this test would hang since this code would never execute:
             // we'd still be waiting for the prior `wait()` tasks to finish.
-            await semaphore.signal()
+            semaphore.signal()
         }
-        await systemUnderTest.await { /* Drain the queue */ }
+        await systemUnderTest.await { _ in /* Drain the queue */ }
     }
 
     func test_await_allowsReentrancy() async {
-        let counter = Counter()
-        await systemUnderTest.await { [systemUnderTest] in
-            await systemUnderTest.await {
-                await counter.incrementAndExpectCount(equals: 1)
+        await systemUnderTest.await { [systemUnderTest] counter in
+            await systemUnderTest.await { counter in
+                counter.incrementAndExpectCount(equals: 1)
             }
-            await counter.incrementAndExpectCount(equals: 2)
+            counter.incrementAndExpectCount(equals: 2)
         }
     }
 
     func test_async_executesEnqueuedTasksAfterReceiverIsDeallocated() async {
-        var systemUnderTest: ActorQueue? = ActorQueue()
-        let counter = Counter()
+        var systemUnderTest: ActorQueue<Counter>? = ActorQueue()
+        systemUnderTest?.setTargetContext(to: counter)
+
         let expectation = self.expectation(description: #function)
         let semaphore = Semaphore()
-        systemUnderTest?.async {
+        systemUnderTest?.async { counter in
             // Make the task wait.
             await semaphore.wait()
-            await counter.incrementAndExpectCount(equals: 1)
+            counter.incrementAndExpectCount(equals: 1)
             expectation.fulfill()
         }
         weak var queue = systemUnderTest
@@ -108,15 +137,18 @@ final class ActorQueueTests: XCTestCase {
         let referenceHolder = ReferenceHolder()
         let asyncSemaphore = Semaphore()
         let syncSemaphore = Semaphore()
+        let systemUnderTest = ActorQueue<Semaphore>()
+        systemUnderTest.setTargetContext(to: syncSemaphore)
+
         let expectation = self.expectation(description: #function)
-        systemUnderTest.async { [reference = referenceHolder.reference] in
+        systemUnderTest.async { [reference = referenceHolder.reference] syncSemaphore in
             // Now that we've started the task and captured the reference, release the synchronous code.
-            await syncSemaphore.signal()
+            syncSemaphore.signal()
             // Wait for the synchronous setup to complete and the reference to be nil'd out.
             await asyncSemaphore.wait()
             // Retain the unsafe counter until the task is completed.
             _ = reference
-            self.systemUnderTest.async {
+            systemUnderTest.async { _ in
                 // Signal that this task has cleaned up.
                 // This closure will not execute until the prior closure completes.
                 expectation.fulfill()
@@ -135,10 +167,9 @@ final class ActorQueueTests: XCTestCase {
     }
 
     func test_await_sendsEventsInOrder() async {
-        let counter = Counter()
         for iteration in 1...1_000 {
-            systemUnderTest.async {
-                await counter.incrementAndExpectCount(equals: iteration)
+            systemUnderTest.async { counter in
+                counter.incrementAndExpectCount(equals: iteration)
             }
 
             guard iteration % 25 == 0 else {
@@ -146,17 +177,16 @@ final class ActorQueueTests: XCTestCase {
                 continue
             }
 
-            await systemUnderTest.await {
-                let count = await counter.count
-                XCTAssertEqual(count, iteration)
+            await systemUnderTest.await { counter in
+                XCTAssertEqual(counter.count, iteration)
             }
         }
-        await systemUnderTest.await { /* Drain the queue */ }
+        await systemUnderTest.await { _ in /* Drain the queue */ }
     }
 
     func test_await_canReturn() async {
         let expectedValue = UUID()
-        let returnedValue = await systemUnderTest.await { expectedValue }
+        let returnedValue = await systemUnderTest.await { _ in expectedValue }
         XCTAssertEqual(expectedValue, returnedValue)
     }
 
@@ -166,7 +196,7 @@ final class ActorQueueTests: XCTestCase {
         }
         let expectedError = TestError()
         do {
-            try await systemUnderTest.await { throw expectedError }
+            try await systemUnderTest.await { _ in throw expectedError }
         } catch {
             XCTAssertEqual(error as? TestError, expectedError)
         }
@@ -174,5 +204,6 @@ final class ActorQueueTests: XCTestCase {
 
     // MARK: Private
 
-    private var systemUnderTest = ActorQueue()
+    private var systemUnderTest = ActorQueue<Counter>()
+    private var counter: Counter = Counter()
 }
