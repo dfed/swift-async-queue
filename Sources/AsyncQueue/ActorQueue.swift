@@ -93,6 +93,9 @@ public final class ActorQueue<ActorType: Actor> {
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
     /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
     public func async(_ task: @escaping @Sendable (isolated ActorType) async -> Void) {
+        // Crashing here means that this queue is being sent tasks either before an execution context has been set, or
+        // after the execution context has deallocated. An ActorQueue's execution context should be set in the adopted
+        // actor's `init` method, and the ActorQueue should not exceed the lifecycle of the adopted actor.
         taskStreamContinuation.yield(ActorTask(executionContext: executionContext!, task: task))
     }
 
@@ -101,6 +104,9 @@ public final class ActorQueue<ActorType: Actor> {
     /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
     /// - Returns: The value returned from the enqueued task.
     public func await<T>(_ task: @escaping @Sendable (isolated ActorType) async -> T) async -> T {
+        // Crashing here means that this queue is being sent tasks either before an execution context has been set, or
+        // after the execution context has deallocated. An ActorQueue's execution context should be set in the adopted
+        // actor's `init` method, and the ActorQueue should not exceed the lifecycle of the adopted actor.
         let executionContext = self.executionContext! // Capture/retain the executionContext before suspending.
         return await withUnsafeContinuation { continuation in
             taskStreamContinuation.yield(ActorTask(executionContext: executionContext) { executionContext in
@@ -114,6 +120,9 @@ public final class ActorQueue<ActorType: Actor> {
     /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
     /// - Returns: The value returned from the enqueued task.
     public func await<T>(_ task: @escaping @Sendable (isolated ActorType) async throws -> T) async throws -> T {
+        // Crashing here means that this queue is being sent tasks either before an execution context has been set, or
+        // after the execution context has deallocated. An ActorQueue's execution context should be set in the adopted
+        // actor's `init` method, and the ActorQueue should not exceed the lifecycle of the adopted actor.
         let executionContext = self.executionContext! // Capture/retain the executionContext before suspending.
         return try await withUnsafeThrowingContinuation { continuation in
             taskStreamContinuation.yield(ActorTask(executionContext: executionContext) { executionContext in
