@@ -115,14 +115,15 @@ final class SemaphoreTests: XCTestCase {
 // MARK: - Semaphore Extension
 
 private extension Semaphore {
-    /// Enqueues an asynchronous task. This method suspends the caller until the asynchronous task has begun, ensuring ordered execution of enqueued tasks.
+    /// Enqueues an asynchronous task and increments a counter after the task completes.
+    /// This method suspends the caller until the asynchronous task has begun, ensuring ordered execution of enqueued tasks.
     /// - Parameter task: A unit of work that returns work to execute after the task completes and the count is incremented.
     func enqueueAndCount(using counter: UnsafeCounter, _ task: @escaping @Sendable (isolated Semaphore) async -> ((isolated Semaphore) -> Void)?) async {
         // Await the start of the soon-to-be-enqueued `Task` with a continuation.
         await withCheckedContinuation { continuation in
-            // Re-enter the actor context but don't wait for the result.
+            // Re-enter the semaphore's ordered context but don't wait for the result.
             Task {
-                // Now that we're back in the actor context, resume the calling code.
+                // Now that we're back in the semaphore's ordered context, allow the calling code to resume.
                 continuation.resume()
                 let executeAfterIncrement = await task(self)
                 counter.countedTasksCompleted += 1
