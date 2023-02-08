@@ -33,10 +33,10 @@ final class SemaphoreTests: XCTestCase {
     }
 
     override func tearDown() async throws {
-        try await super.tearDown()
-
         let isWaiting = await systemUnderTest.isWaiting
         XCTAssertFalse(isWaiting)
+
+        try await super.tearDown()
     }
 
     // MARK: Behavior Tests
