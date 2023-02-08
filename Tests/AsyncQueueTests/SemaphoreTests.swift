@@ -47,7 +47,7 @@ final class SemaphoreTests: XCTestCase {
          Our requirements:
          1. We need to call `wait()` before `signal()`
          2. We need to ensure that the `wait()` call suspends _before_ we call `signal()`
-         3. We can't `await` the `wait()` call before calling `signal()` since that would effectively deadlock the test.
+         3. We can't `await` the `wait()` call on the test's queue before calling `signal()` since that would deadlock the test.
          4. We must utilize a single actor's isolated context to avoid accidental interleaving when suspending to communicate across actor contexts.
 
          In order to ensure that we are executing the `wait()` calls before we call `signal()` _without awaiting a `wait()` call_,
