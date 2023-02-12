@@ -32,6 +32,7 @@ func testMainActorTaskOrdering() async {
             await counter.incrementAndAssertCountEquals(iteration)
         })
     }
+    // Wait for all enqueued tasks to finish.
     for task in tasks {
         _ = await task.value
     }
@@ -77,6 +78,7 @@ func testFIFOQueueOrdering() async {
     for iteration in 1...100 {
         counter.incrementAndAssertCountEquals(iteration)
     }
+    // Wait for all enqueued tasks to finish.
     await counter.flushQueue()
 }
 ```
@@ -118,6 +120,7 @@ func testActorQueueOrdering() async {
     for iteration in 1...100 {
         counter.incrementAndAssertCountEquals(iteration)
     }
+    // Wait for all enqueued tasks to finish.
     await counter.flushQueue()
 }
 ```
