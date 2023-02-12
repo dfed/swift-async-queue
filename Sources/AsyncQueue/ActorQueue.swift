@@ -85,8 +85,8 @@ public final class ActorQueue<ActorType: Actor> {
     /// - Parameter actor: The actor on which the queue's task will execute. This parameter is not retained by the receiver.
     /// - Warning: Calling this method more than once will result in an assertion failure.
     public func adoptExecutionContext(of actor: ActorType) {
-        assert(unownedExecutionContext == nil) // Adopting multiple executionContexts on the same queue is API abuse.
-        unownedExecutionContext = actor
+        assert(weakExecutionContext == nil) // Adopting multiple executionContexts on the same queue is API abuse.
+        weakExecutionContext = actor
     }
 
     /// Schedules an asynchronous task for execution and immediately returns.
@@ -131,16 +131,20 @@ public final class ActorQueue<ActorType: Actor> {
     private let taskStreamContinuation: AsyncStream<ActorTask>.Continuation
 
     /// The actor on whose isolated context our tasks run, force-unwrapped.
-    /// Utilize this accessor to retrieve the unowned execution context in order to avoid repeating the below comment.
+    /// Utilize this accessor to retrieve the weak execution context in order to avoid repeating the below comment.
     private var executionContext: ActorType {
         // Crashing here means that this queue is being sent tasks either before an execution context has been set, or
         // after the execution context has deallocated. An ActorQueue's execution context should be set in the adopted
         // actor's `init` method, and the ActorQueue should not exceed the lifecycle of the adopted actor.
-        unownedExecutionContext!
+        weakExecutionContext!
     }
     /// The actor on whose isolated context our tasks run.
-    /// It is safe to use `unowned` here because it is API misuse to interact with an `ActorQueue` from an instance other than the `unownedExecutionContext`.
-    private unowned var unownedExecutionContext: ActorType?
+    /// We must use`weak` here to avoid creating a retain cycle between the adopted actor and this actor queue.
+    ///
+    /// We will assume this execution context always exists for the lifecycle of the queue because:
+    /// 1. The lifecycle of any `ActorQueue` must not exceed the lifecycle of its adopted `actor`.
+    /// 2. The adopted `actor` must set itself as the execution context for this queue within its `init` method.
+    private weak var weakExecutionContext: ActorType?
 
     private struct ActorTask {
         let executionContext: ActorType
