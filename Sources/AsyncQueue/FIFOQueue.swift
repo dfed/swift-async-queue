@@ -59,7 +59,7 @@ public final class FIFOQueue: Sendable {
     }
 
     /// Schedules an asynchronous task for execution and immediately returns.
-    /// The scheduled task will not execute until all prior tasks have completed.
+    /// The scheduled task will not execute until all prior tasks – including suspended tasks – have completed.
     /// - Parameters:
     ///   - isolatedActor: The actor within which the task is isolated.
     ///   - task: The task to enqueue.
@@ -80,7 +80,7 @@ public final class FIFOQueue: Sendable {
     }
 
     /// Schedules an asynchronous task and returns after the task is complete.
-    /// The scheduled task will not execute until all prior tasks have completed.
+    /// The scheduled task will not execute until all prior tasks – including suspended tasks – have completed.
     /// - Parameters:
     ///   - isolatedActor: The actor within which the task is isolated.
     ///   - task: The task to enqueue.
@@ -110,7 +110,7 @@ public final class FIFOQueue: Sendable {
     }
 
     /// Schedules an asynchronous throwing task and returns after the task is complete.
-    /// The scheduled task will not execute until all prior tasks have completed.
+    /// The scheduled task will not execute until all prior tasks – including suspended tasks – have completed.
     /// - Parameters:
     ///   - isolatedActor: The actor within which the task is isolated.
     ///   - task: The task to enqueue.
