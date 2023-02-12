@@ -50,7 +50,7 @@
 /// }
 /// ```
 ///
-/// - Warning: The lifecycle of an `ActorQueue` should not exceed that of the adopted actor.
+/// - Precondition: The lifecycle of an `ActorQueue` must not exceed that of the adopted actor.
 public final class ActorQueue<ActorType: Actor> {
 
     // MARK: Initialization
