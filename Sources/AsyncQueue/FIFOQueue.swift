@@ -58,6 +58,15 @@ public final class FIFOQueue: Sendable {
         taskStreamContinuation.yield(task)
     }
 
+    /// Schedules an asynchronous task for execution and immediately returns.
+    /// The scheduled task will not execute until all prior tasks have completed.
+    /// - Parameters:
+    ///   - isolatedActor: The actor within which the task is isolated.
+    ///   - task: The task to enqueue.
+    public func async<ActorType: Actor>(on isolatedActor: ActorType, _ task: @escaping @Sendable (isolated ActorType) async -> Void) {
+        taskStreamContinuation.yield { await task(isolatedActor) }
+    }
+
     /// Schedules an asynchronous task and returns after the task is complete.
     /// The scheduled task will not execute until all prior tasks have completed.
     /// - Parameter task: The task to enqueue.
@@ -66,6 +75,20 @@ public final class FIFOQueue: Sendable {
         await withUnsafeContinuation { continuation in
             taskStreamContinuation.yield {
                 continuation.resume(returning: await task())
+            }
+        }
+    }
+
+    /// Schedules an asynchronous task and returns after the task is complete.
+    /// The scheduled task will not execute until all prior tasks have completed.
+    /// - Parameters:
+    ///   - isolatedActor: The actor within which the task is isolated.
+    ///   - task: The task to enqueue.
+    /// - Returns: The value returned from the enqueued task.
+    public func await<ActorType: Actor, T>(on isolatedActor: isolated ActorType, _ task: @escaping @Sendable (isolated ActorType) async -> T) async -> T {
+        await withUnsafeContinuation { continuation in
+            taskStreamContinuation.yield {
+                continuation.resume(returning: await task(isolatedActor))
             }
         }
     }
@@ -79,6 +102,24 @@ public final class FIFOQueue: Sendable {
             taskStreamContinuation.yield {
                 do {
                     continuation.resume(returning: try await task())
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Schedules an asynchronous throwing task and returns after the task is complete.
+    /// The scheduled task will not execute until all prior tasks have completed.
+    /// - Parameters:
+    ///   - isolatedActor: The actor within which the task is isolated.
+    ///   - task: The task to enqueue.
+    /// - Returns: The value returned from the enqueued task.
+    public func await<ActorType: Actor, T>(on isolatedActor: isolated ActorType, _ task: @escaping @Sendable (isolated ActorType) async throws -> T) async throws -> T {
+        try await withUnsafeThrowingContinuation { continuation in
+            taskStreamContinuation.yield {
+                do {
+                    continuation.resume(returning: try await task(isolatedActor))
                 } catch {
                     continuation.resume(throwing: error)
                 }
