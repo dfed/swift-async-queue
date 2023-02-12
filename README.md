@@ -14,13 +14,21 @@ Tasks sent from a synchronous context to an asynchronous context in Swift Concur
 
 ```swift
 @MainActor
-func test_mainActor_taskOrdering() async {
-    var counter = 0
+func testMainActorTaskOrdering() async {
+    actor Counter {
+        func increment() -> Int {
+            count += 1
+            return count
+        }
+        var count = 0
+    }
+
+    let counter = Counter()
     var tasks = [Task<Void, Never>]()
     for iteration in 1...100 {
         tasks.append(Task {
-            counter += 1
-            XCTAssertEqual(counter, iteration) // often fails
+            let incrementedCount = await counter.increment()
+            XCTAssertEqual(incrementedCount, iteration) // often fails
         })
     }
     for task in tasks {
@@ -51,14 +59,35 @@ queue.async {
     This task begins execution once the above one-second sleep completes.
     */
 }
-Task {
-    await queue.await {
-        /*
-        `async` context that can return a value or throw an error.
-        Executes after all other enqueued work is completed.
-        Work enqueued after this task will wait for this task to complete.
-        */
+await queue.await {
+    /*
+    `async` context that can return a value or throw an error.
+    Executes after all other enqueued work is completed.
+    Work enqueued after this task will wait for this task to complete.
+    */
+}
+```
+
+With a `FIFOQueue` you can easily execute asynchronous tasks from a nonisolated context in FIFO order:
+```swift
+func testFIFOQueueOrdering() async {
+    actor Counter {
+        func increment() -> Int {
+            count += 1
+            return count
+        }
+        var count = 0
     }
+
+    let counter = Counter()
+    let queue = FIFOQueue()
+    for iteration in 1...100 {
+        queue.async {
+            let incrementedCount = await counter.increment()
+            XCTAssertEqual(incrementedCount, iteration) // always succeeds
+        }
+    }
+    await queue.await { }
 }
 ```
 
@@ -80,14 +109,35 @@ queue.async {
     This task begins execution once the above task suspends due to the one-second sleep.
     */
 }
-Task {
-    await queue.await {
-        /*
-        `async` context that can return a value or throw an error.
-        Executes after all other enqueued work has begun executing.
-        Work enqueued after this task will wait for this task to complete or suspend.
-        */
+await queue.await {
+    /*
+    `async` context that can return a value or throw an error.
+    Executes after all other enqueued work has begun executing.
+    Work enqueued after this task will wait for this task to complete or suspend.
+    */
+}
+```
+
+With an `ActorQueue` you can easily begin execution of asynchronous tasks from a nonisolated context in order:
+```swift
+func testActorQueueOrdering() async {
+    actor Counter {
+        func increment() -> Int {
+            count += 1
+            return count
+        }
+        var count = 0
     }
+
+    let counter = Counter()
+    let queue = ActorQueue()
+    for iteration in 1...100 {
+        queue.async {
+            let incrementedCount = await counter.increment()
+            XCTAssertEqual(incrementedCount, iteration) // always succeeds
+        }
+    }
+    await queue.await { }
 }
 ```
 
