@@ -20,56 +20,54 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-/// A queue that executes asynchronous tasks enqueued from a nonisolated context.
+/// A queue that enables enqueing ordered asynchronous tasks from a nonisolated context onto an adopted actor's isolated context.
 /// Tasks are guaranteed to begin executing in the order in which they are enqueued. However, if a task suspends it will allow subsequently enqueued tasks to begin executing.
-/// Asynchronous tasks sent to this queue execute as they would in an `actor` type, allowing for re-entrancy and non-FIFO behavior when an individual task suspends.
+/// This queue exhibits the execution behavior of an actor: tasks sent to this queue can re-enter the queue, and tasks may execute in non-FIFO order when a task suspends.
 ///
-/// An `ActorQueue` is used to ensure tasks sent from a nonisolated context to a single `actor`'s isolated context begin execution in order.
-/// Here is an example of how an `ActorQueue` should be utilized within an `actor`:
+/// An `ActorQueue` ensures tasks sent from a nonisolated context to a single actor's isolated context begin execution in order.
+/// Here is an example of how an `ActorQueue` should be utilized within an actor:
 /// ```swift
 /// public actor LogStore {
 ///
+///     public init() {
+///         queue.adoptExecutionContext(of: self)
+///     }
+///
 ///     nonisolated
 ///     public func log(_ message: String) {
-///         queue.async {
-///             await self.append(message)
+///         queue.async { myself in
+///             myself.logs.append(message)
 ///         }
 ///     }
 ///
 ///     nonisolated
 ///     public func retrieveLogs() async -> [String] {
-///         await queue.await { await self.logs }
+///         await queue.await { myself in myself.logs }
 ///     }
 ///
-///     private func append(_ message: String) {
-///         logs.append(message)
-///     }
-///
-///     private let queue = ActorQueue()
+///     private let queue = ActorQueue<LogStore>()
 ///     private var logs = [String]()
 /// }
 /// ```
 ///
-/// - Warning: Execution order is not guaranteed unless the enqueued tasks interact with a single `actor` instance.
-public final class ActorQueue {
+/// - Precondition: The lifecycle of an `ActorQueue` must not exceed that of the adopted actor.
+public final class ActorQueue<ActorType: Actor> {
 
     // MARK: Initialization
 
     /// Instantiates an actor queue.
-    /// - Parameter priority: The baseline priority of the tasks added to the asynchronous queue.
-    public init(priority: TaskPriority? = nil) {
-        var capturedTaskStreamContinuation: AsyncStream<@Sendable () async -> Void>.Continuation? = nil
-        let taskStream = AsyncStream<@Sendable () async -> Void> { continuation in
+    public init() {
+        var capturedTaskStreamContinuation: AsyncStream<ActorTask>.Continuation? = nil
+        let taskStream = AsyncStream<ActorTask> { continuation in
             capturedTaskStreamContinuation = continuation
         }
         // Continuation will be captured during stream creation, so it is safe to force unwrap here.
         // If this force-unwrap fails, something is fundamentally broken in the Swift runtime.
         taskStreamContinuation = capturedTaskStreamContinuation!
 
-        Task.detached(priority: priority) {
-            let executor = ActorExecutor()
-            for await task in taskStream {
-                await executor.suspendUntilStarted(task)
+        Task.detached {
+            for await actorTask in taskStream {
+                await actorTask.executionContext.suspendUntilStarted(actorTask.task)
             }
         }
     }
@@ -80,65 +78,91 @@ public final class ActorQueue {
 
     // MARK: Public
 
+    /// Sets the actor context within which each `async` and `await`ed task will execute.
+    /// It is recommended that this method be called in the adopted actor’s `init` method.
+    /// **Must be called prior to enqueuing any work on the receiver.**
+    ///
+    /// - Parameter actor: The actor on which the queue's task will execute. This parameter is not retained by the receiver.
+    /// - Warning: Calling this method more than once will result in an assertion failure.
+    public func adoptExecutionContext(of actor: ActorType) {
+        assert(weakExecutionContext == nil) // Adopting multiple executionContexts on the same queue is API abuse.
+        weakExecutionContext = actor
+    }
+
     /// Schedules an asynchronous task for execution and immediately returns.
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
-    /// - Parameter task: The task to enqueue.
-    public func async(_ task: @escaping @Sendable () async -> Void) {
-        taskStreamContinuation.yield(task)
+    /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
+    public func async(_ task: @escaping @Sendable (isolated ActorType) async -> Void) {
+        taskStreamContinuation.yield(ActorTask(executionContext: executionContext, task: task))
     }
 
     /// Schedules an asynchronous task and returns after the task is complete.
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
-    /// - Parameter task: The task to enqueue.
+    /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
     /// - Returns: The value returned from the enqueued task.
-    public func await<T>(_ task: @escaping @Sendable () async -> T) async -> T {
-        await withUnsafeContinuation { continuation in
-            taskStreamContinuation.yield {
-                continuation.resume(returning: await task())
-            }
+    public func await<T>(_ task: @escaping @Sendable (isolated ActorType) async -> T) async -> T {
+        let executionContext = self.executionContext // Capture/retain the executionContext before suspending.
+        return await withUnsafeContinuation { continuation in
+            taskStreamContinuation.yield(ActorTask(executionContext: executionContext) { executionContext in
+                continuation.resume(returning: await task(executionContext))
+            })
         }
     }
 
     /// Schedules an asynchronous throwing task and returns after the task is complete.
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
-    /// - Parameter task: The task to enqueue.
+    /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
     /// - Returns: The value returned from the enqueued task.
-    public func await<T>(_ task: @escaping @Sendable () async throws -> T) async throws -> T {
-        try await withUnsafeThrowingContinuation { continuation in
-            taskStreamContinuation.yield {
+    public func await<T>(_ task: @escaping @Sendable (isolated ActorType) async throws -> T) async throws -> T {
+        let executionContext = self.executionContext // Capture/retain the executionContext before suspending.
+        return try await withUnsafeThrowingContinuation { continuation in
+            taskStreamContinuation.yield(ActorTask(executionContext: executionContext) { executionContext in
                 do {
-                    continuation.resume(returning: try await task())
+                    continuation.resume(returning: try await task(executionContext))
                 } catch {
                     continuation.resume(throwing: error)
                 }
-            }
+            })
         }
     }
 
     // MARK: Private
 
-    private let taskStreamContinuation: AsyncStream<@Sendable () async -> Void>.Continuation
+    private let taskStreamContinuation: AsyncStream<ActorTask>.Continuation
 
-    // MARK: - ActorExecutor
+    /// The actor on whose isolated context our tasks run, force-unwrapped.
+    /// Utilize this accessor to retrieve the weak execution context in order to avoid repeating the below comment.
+    private var executionContext: ActorType {
+        // Crashing here means that this queue is being sent tasks either before an execution context has been set, or
+        // after the execution context has deallocated. An ActorQueue's execution context should be set in the adopted
+        // actor's `init` method, and the ActorQueue should not exceed the lifecycle of the adopted actor.
+        weakExecutionContext!
+    }
+    /// The actor on whose isolated context our tasks run.
+    /// We must use`weak` here to avoid creating a retain cycle between the adopted actor and this actor queue.
+    ///
+    /// We will assume this execution context always exists for the lifecycle of the queue because:
+    /// 1. The lifecycle of any `ActorQueue` must not exceed the lifecycle of its adopted `actor`.
+    /// 2. The adopted `actor` must set itself as the execution context for this queue within its `init` method.
+    private weak var weakExecutionContext: ActorType?
 
-    private actor ActorExecutor {
-        func suspendUntilStarted(_ task: @escaping @Sendable () async -> Void) async {
-            // Suspend the calling code until our enqueued task starts.
-            await withUnsafeContinuation { continuation in
-                // Utilize the serial (but not FIFO) Actor context to execute the task without requiring the calling method to wait for the task to complete.
-                Task {
-                    // Force this task to execute within the ActorExecutor's context by accessing an ivar on the instance.
-                    // This works around a bug when compiling with Xcode 14.1: https://github.com/apple/swift/issues/62503
-                    _ = void
-
-                    // Signal that the task has started. As long as the `task` below interacts with another `actor` the order of execution is guaranteed.
-                    continuation.resume()
-                    await task()
-                }
-            }
-        }
-
-        private let void: Void = ()
+    private struct ActorTask {
+        let executionContext: ActorType
+        let task: @Sendable (isolated ActorType) async -> Void
     }
 
+}
+
+extension Actor {
+    func suspendUntilStarted(_ task: @escaping @Sendable (isolated Self) async -> Void) async {
+        // Suspend the calling code until our enqueued task starts.
+        await withUnsafeContinuation { continuation in
+            // Utilize the serial (but not FIFO) Actor context to execute the task without requiring the calling method to wait for the task to complete.
+            Task {
+                // Signal that the task has started. Since this `task` is executing on the current actor's execution context, the order of execution is guaranteed.
+                continuation.resume()
+                await task(self)
+            }
+        }
+    }
 }
