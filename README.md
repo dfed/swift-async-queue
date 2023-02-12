@@ -45,7 +45,7 @@ While [actors](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#
 
 ### Executing asynchronous tasks in FIFO order
 
-Use a `FIFOQueue` to execute asynchronous tasks enqueued from a nonisolated context in FIFO order. Tasks sent to one of these queues are guaranteed to begin _and end_ executing in the order in which they are enqueued. A `FIFOQueue` executes tasks in a similar manner to a `DispatchQueue`: enqueued tasks executes atomically, and a `FIFOQueue` task will deadlock the queue if it awaits results from the queue on which it is executing.
+Use a `FIFOQueue` to execute asynchronous tasks enqueued from a nonisolated context in FIFO order. Tasks sent to one of these queues are guaranteed to begin _and end_ executing in the order in which they are enqueued. A `FIFOQueue` executes tasks in a similar manner to a `DispatchQueue`: enqueued tasks executes atomically, and the program will deadlock if a task executing on a `FIFOQueue` awaits results from the queue on which it is executing.
 
 A `FIFOQueue` can easily execute asynchronous tasks from a nonisolated context in FIFO order:
 ```swift
