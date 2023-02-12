@@ -47,7 +47,7 @@ final class ActorQueueTests: XCTestCase {
         XCTAssertNil(weakCounter)
     }
 
-    func test_async_retainsAdoptedActorUntilQueueFlushes() async {
+    func test_async_retainsAdoptedActorUntilEnqueuedTasksComplete() async {
         let systemUnderTest = ActorQueue<Counter>()
         var counter: Counter? = Counter()
         weak var weakCounter = counter
