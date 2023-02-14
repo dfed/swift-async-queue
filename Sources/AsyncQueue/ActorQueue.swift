@@ -35,14 +35,14 @@
 ///
 ///     nonisolated
 ///     public func log(_ message: String) {
-///         queue.async { myself in
+///         queue.enqueue { myself in
 ///             myself.logs.append(message)
 ///         }
 ///     }
 ///
 ///     nonisolated
 ///     public func retrieveLogs() async -> [String] {
-///         await queue.await { myself in myself.logs }
+///         await queue.enqueueAndWait { myself in myself.logs }
 ///     }
 ///
 ///     private let queue = ActorQueue<LogStore>()
@@ -78,7 +78,7 @@ public final class ActorQueue<ActorType: Actor> {
 
     // MARK: Public
 
-    /// Sets the actor context within which each `async` and `await`ed task will execute.
+    /// Sets the actor context within which each `enqueue` and `enqueueAndWait` task will execute.
     /// It is recommended that this method be called in the adopted actor’s `init` method.
     /// **Must be called prior to enqueuing any work on the receiver.**
     ///
@@ -92,7 +92,7 @@ public final class ActorQueue<ActorType: Actor> {
     /// Schedules an asynchronous task for execution and immediately returns.
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
     /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
-    public func async(_ task: @escaping @Sendable (isolated ActorType) async -> Void) {
+    public func enqueue(_ task: @escaping @Sendable (isolated ActorType) async -> Void) {
         taskStreamContinuation.yield(ActorTask(executionContext: executionContext, task: task))
     }
 
@@ -100,7 +100,7 @@ public final class ActorQueue<ActorType: Actor> {
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
     /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
     /// - Returns: The value returned from the enqueued task.
-    public func await<T>(_ task: @escaping @Sendable (isolated ActorType) async -> T) async -> T {
+    public func enqueueAndWait<T>(_ task: @escaping @Sendable (isolated ActorType) async -> T) async -> T {
         let executionContext = self.executionContext // Capture/retain the executionContext before suspending.
         return await withUnsafeContinuation { continuation in
             taskStreamContinuation.yield(ActorTask(executionContext: executionContext) { executionContext in
@@ -113,7 +113,7 @@ public final class ActorQueue<ActorType: Actor> {
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
     /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
     /// - Returns: The value returned from the enqueued task.
-    public func await<T>(_ task: @escaping @Sendable (isolated ActorType) async throws -> T) async throws -> T {
+    public func enqueueAndWait<T>(_ task: @escaping @Sendable (isolated ActorType) async throws -> T) async throws -> T {
         let executionContext = self.executionContext // Capture/retain the executionContext before suspending.
         return try await withUnsafeThrowingContinuation { continuation in
             taskStreamContinuation.yield(ActorTask(executionContext: executionContext) { executionContext in
