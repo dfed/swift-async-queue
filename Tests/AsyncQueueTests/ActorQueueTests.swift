@@ -65,8 +65,8 @@ final class ActorQueueTests: XCTestCase {
 
     func test_enqueue_taskParameterIsAdoptedActor() async {
         let semaphore = Semaphore()
-        systemUnderTest.enqueue { counter in
-            XCTAssertTrue(counter === self.counter)
+        systemUnderTest.enqueue { [storedCounter = counter] counter in
+            XCTAssertTrue(counter === storedCounter)
             await semaphore.signal()
         }
 
@@ -74,8 +74,8 @@ final class ActorQueueTests: XCTestCase {
     }
 
     func test_enqueueAndWait_taskParameterIsAdoptedActor() async {
-        await systemUnderTest.enqueueAndWait { counter in
-            XCTAssertTrue(counter === self.counter)
+        await systemUnderTest.enqueueAndWait { [storedCounter = counter] counter in
+            XCTAssertTrue(counter === storedCounter)
         }
     }
 

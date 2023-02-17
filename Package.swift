@@ -22,6 +22,11 @@ let package = Package(
             dependencies: []),
         .testTarget(
             name: "AsyncQueueTests",
-            dependencies: ["AsyncQueue"]),
+            dependencies: ["AsyncQueue"],
+            swiftSettings: [
+                // TODO: Adopt `enableUpcomingFeature` once available.
+                // https://github.com/apple/swift-evolution/blob/main/proposals/0362-piecemeal-future-features.md
+                .unsafeFlags(["-Xfrontend", "-strict-concurrency=complete"])
+            ]),
     ]
 )
