@@ -89,8 +89,8 @@ FIFO execution has a key downside: the queue must wait for all previously enqueu
 
 Use an `ActorQueue` to send ordered asynchronous tasks to an `actor`’s isolated context from nonisolated or synchronous contexts. Tasks sent to an actor queue are guaranteed to begin executing in the order in which they are enqueued. However, unlike a `FIFOQueue`, execution order is guaranteed only until the first [suspension point](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID639) within the enqueued task. An `ActorQueue` executes tasks within the its adopted actor’s isolated context, resulting in `ActorQueue` task execution having the same properties as `actor` code execution: code between suspension points is executed atomically, and tasks sent to a single `ActorQueue` can await results from the queue without deadlocking.
 
-An instance of an `ActorQueue` is designed to be utilized by a single `actor` instance: tasks sent to an `ActorQueue` utilize the isolated context of the queue‘s adopted `actor` to serialize tasks. As such, there are a few requirements that must be met when dealing with an `ActorQueue`:
-1. The lifecycle of any `ActorQueue` should not exceed the lifecycle of its `actor`. It is strongly recommended that an `ActorQueue` be a `let` constant on the adopted `actor`. Enqueuing a task to an `ActorQueue` isntance after its adopted `actor` has been deallocated will result in a crash.
+An instance of an `ActorQueue` is designed to be utilized by a single `actor` instance: tasks sent to an `ActorQueue` utilize the isolated context of the queue‘s adopted `actor` to serialize tasks. As such, there are a couple requirements that must be met when dealing with an `ActorQueue`:
+1. The lifecycle of any `ActorQueue` should not exceed the lifecycle of its `actor`. It is strongly recommended that an `ActorQueue` be a `private let` constant on the adopted `actor`. Enqueuing a task to an `ActorQueue` instance after its adopted `actor` has been deallocated will result in a crash.
 2. An `actor` utilizing an `ActorQueue` should set the adopted execution context of the queue to `self` within the `actor`’s `init`. Failing to set an adopted execution context prior to enqueuing work on an `ActorQueue` will result in a crash.
 
 An `ActorQueue` can easily enqueue tasks that execute on an actor’s isolated context from a nonisolated context in order:
@@ -146,7 +146,7 @@ To install swift-async-queue in your iOS project with [Swift Package Manager](ht
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/dfed/swift-async-queue", from: "0.2.0"),
+    .package(url: "https://github.com/dfed/swift-async-queue", from: "0.3.0"),
 ]
 ```
 
@@ -156,7 +156,7 @@ To install swift-async-queue in your iOS project with [CocoaPods](http://cocoapo
 
 ```
 platform :ios, '13.0'
-pod 'AsyncQueue', '~> 0.2.0'
+pod 'AsyncQueue', '~> 0.3.0'
 ```
 
 ## Contributing

@@ -50,8 +50,9 @@
 /// }
 /// ```
 ///
+/// - Warning: The `ActorQueue`'s conformance to `@unchecked Sendable` is safe if and only if `adoptExecutionContext(of:)` is called only from the adopted actor's `init` method.
 /// - Precondition: The lifecycle of an `ActorQueue` must not exceed that of the adopted actor.
-public final class ActorQueue<ActorType: Actor> {
+public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
 
     // MARK: Initialization
 
@@ -78,7 +79,7 @@ public final class ActorQueue<ActorType: Actor> {
 
     // MARK: Public
 
-    /// Sets the actor context within which each `enqueue` and `enqueueAndWait` task will execute.
+    /// Sets the actor context within which each `enqueue` and `enqueueAndWait`ed task will execute.
     /// It is recommended that this method be called in the adopted actor’s `init` method.
     /// **Must be called prior to enqueuing any work on the receiver.**
     ///
@@ -100,7 +101,7 @@ public final class ActorQueue<ActorType: Actor> {
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
     /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
     /// - Returns: The value returned from the enqueued task.
-    public func enqueueAndWait<T>(_ task: @escaping @Sendable (isolated ActorType) async -> T) async -> T {
+    public func enqueueAndWait<T: Sendable>(_ task: @escaping @Sendable (isolated ActorType) async -> T) async -> T {
         let executionContext = self.executionContext // Capture/retain the executionContext before suspending.
         return await withUnsafeContinuation { continuation in
             taskStreamContinuation.yield(ActorTask(executionContext: executionContext) { executionContext in
@@ -113,7 +114,7 @@ public final class ActorQueue<ActorType: Actor> {
     /// The scheduled task will not execute until all prior tasks have completed or suspended.
     /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
     /// - Returns: The value returned from the enqueued task.
-    public func enqueueAndWait<T>(_ task: @escaping @Sendable (isolated ActorType) async throws -> T) async throws -> T {
+    public func enqueueAndWait<T: Sendable>(_ task: @escaping @Sendable (isolated ActorType) async throws -> T) async throws -> T {
         let executionContext = self.executionContext // Capture/retain the executionContext before suspending.
         return try await withUnsafeThrowingContinuation { continuation in
             taskStreamContinuation.yield(ActorTask(executionContext: executionContext) { executionContext in
@@ -150,7 +151,6 @@ public final class ActorQueue<ActorType: Actor> {
         let executionContext: ActorType
         let task: @Sendable (isolated ActorType) async -> Void
     }
-
 }
 
 extension Actor {
