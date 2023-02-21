@@ -78,7 +78,7 @@ final class FIFOQueueTests: XCTestCase {
             systemUnderTest.enqueue {
                 let isWaiting = await semaphore.isWaiting
                 // This test will fail occasionally if we aren't executing atomically.
-                // You can prove this to yourself by replacing `systemUnderTest.async` above with `Task`.
+                // You can prove this to yourself by replacing `systemUnderTest.enqueue` above with `Task`.
                 XCTAssertFalse(isWaiting)
                 // Signal the semaphore before or after we wait – let the scheduler decide.
                 Task {
@@ -97,7 +97,7 @@ final class FIFOQueueTests: XCTestCase {
             systemUnderTest.enqueue(on: semaphore) { semaphore in
                 let isWaiting = semaphore.isWaiting
                 // This test will fail occasionally if we aren't executing atomically.
-                // You can prove this to yourself by replacing `systemUnderTest.async` above with `Task`.
+                // You can prove this to yourself by replacing `systemUnderTest.enqueue` above with `Task`.
                 XCTAssertFalse(isWaiting)
                 // Signal the semaphore before or after we wait – let the scheduler decide.
                 Task {

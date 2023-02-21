@@ -79,7 +79,7 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
 
     // MARK: Public
 
-    /// Sets the actor context within which each `enqueue` and `enqueueAndWait` task will execute.
+    /// Sets the actor context within which each `enqueue` and `enqueueAndWait`ed task will execute.
     /// It is recommended that this method be called in the adopted actor’s `init` method.
     /// **Must be called prior to enqueuing any work on the receiver.**
     ///
