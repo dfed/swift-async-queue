@@ -154,7 +154,7 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
 }
 
 extension Actor {
-    func suspendUntilStarted(_ task: @escaping @Sendable (isolated Self) async -> Void) async {
+    fileprivate func suspendUntilStarted(_ task: @escaping @Sendable (isolated Self) async -> Void) async {
         // Suspend the calling code until our enqueued task starts.
         await withUnsafeContinuation { continuation in
             // Utilize the serial (but not FIFO) Actor context to execute the task without requiring the calling method to wait for the task to complete.

@@ -129,6 +129,46 @@ func testActorQueueOrdering() async {
 }
 ```
 
+### Sending ordered asynchronous tasks to the `@MainActor` from a nonisolated context
+
+Use a `MainActorQueue` to send ordered asynchronous tasks to the `@MainActor`’s isolated context from nonisolated or synchronous contexts. Tasks sent to this queue type are guaranteed to begin executing in the order in which they are enqueued. Like an `ActorQueue`, execution order is guaranteed only until the first [suspension point](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID639) within the enqueued task. A `MainActorQueue` executes tasks within the its adopted actor’s isolated context, resulting in `MainActorQueue` task execution having the same properties as a `@MainActor`'s' code execution: code between suspension points is executed atomically, and tasks sent to a single `MainActorQueue` can await results from the queue without deadlocking.
+
+A `MainActorQueue` can easily execute asynchronous tasks from a nonisolated context in FIFO order:
+```swift
+@MainActor
+func testMainActorQueueOrdering() async {
+    @MainActor
+    final class Counter {
+        nonisolated
+        func incrementAndAssertCountEquals(_ expectedCount: Int) {
+            MainActorQueue.shared.enqueue {
+                self.increment()
+                let incrementedCount = self.count
+                XCTAssertEqual(incrementedCount, expectedCount) // always succeeds
+            }
+        }
+
+        nonisolated
+        func flushQueue() async {
+            await MainActorQueue.shared.enqueueAndWait { }
+        }
+
+        func increment() {
+            count += 1
+        }
+
+        var count = 0
+    }
+
+    let counter = Counter()
+    for iteration in 1...100 {
+        counter.incrementAndAssertCountEquals(iteration)
+    }
+    // Wait for all enqueued tasks to finish.
+    await counter.flushQueue()
+}
+```
+
 ## Requirements
 
 * Xcode 14.1 or later.

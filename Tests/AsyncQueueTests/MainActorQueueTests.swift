@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2022 Dan Federman
+// Copyright (c) 2023 Dan Federman
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,116 +24,67 @@ import XCTest
 
 @testable import AsyncQueue
 
-final class ActorQueueTests: XCTestCase {
+final class MainActorQueueTests: XCTestCase {
 
     // MARK: XCTestCase
 
     override func setUp() async throws {
         try await super.setUp()
 
-        systemUnderTest = ActorQueue<Counter>()
+        systemUnderTest = MainActorQueue()
         counter = Counter()
-        systemUnderTest.adoptExecutionContext(of: counter)
     }
 
     // MARK: Behavior Tests
 
-    func test_adoptExecutionContext_doesNotRetainActor() {
-        let systemUnderTest = ActorQueue<Counter>()
-        var counter: Counter? = Counter()
-        weak var weakCounter = counter
-        systemUnderTest.adoptExecutionContext(of: counter!)
-        counter = nil
-        XCTAssertNil(weakCounter)
+    func test_shared_returnsSameInstance() async {
+        XCTAssertTrue(MainActorQueue.shared === MainActorQueue.shared)
     }
 
-    func test_enqueue_retainsAdoptedActorUntilEnqueuedTasksComplete() async {
-        let systemUnderTest = ActorQueue<Counter>()
-        var counter: Counter? = Counter()
-        weak var weakCounter = counter
-        systemUnderTest.adoptExecutionContext(of: counter!)
-
-        let semaphore = Semaphore()
-        systemUnderTest.enqueue { counter in
-            await semaphore.wait()
+    func test_enqueue_executesOnMainThread() async {
+        systemUnderTest.enqueue {
+            XCTAssertTrue(Thread.isMainThread)
         }
-
-        counter = nil
-        XCTAssertNotNil(weakCounter)
-        await semaphore.signal()
-    }
-
-    func test_enqueue_taskParameterIsAdoptedActor() async {
-        let semaphore = Semaphore()
-        systemUnderTest.enqueue { [storedCounter = counter] counter in
-            XCTAssertTrue(counter === storedCounter)
-            await semaphore.signal()
-        }
-
-        await semaphore.wait()
-    }
-
-    func test_enqueueAndWait_taskParameterIsAdoptedActor() async {
-        await systemUnderTest.enqueueAndWait { [storedCounter = counter] counter in
-            XCTAssertTrue(counter === storedCounter)
-        }
+        await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
     func test_enqueue_sendsEventsInOrder() async {
         for iteration in 1...1_000 {
-            systemUnderTest.enqueue { counter in
-                counter.incrementAndExpectCount(equals: iteration)
+            systemUnderTest.enqueue { [counter] in
+                await counter.incrementAndExpectCount(equals: iteration)
             }
         }
-        await systemUnderTest.enqueueAndWait { _ in /* Drain the queue */ }
+        await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
     func test_enqueue_startsExecutionOfNextTaskAfterSuspension() async {
-        let systemUnderTest = ActorQueue<Semaphore>()
         let semaphore = Semaphore()
-        systemUnderTest.adoptExecutionContext(of: semaphore)
 
-        systemUnderTest.enqueue { semaphore in
+        systemUnderTest.enqueue {
             await semaphore.wait()
         }
-        systemUnderTest.enqueue { semaphore in
+        systemUnderTest.enqueue {
             // Signal the semaphore from the actor queue.
             // If the actor queue were FIFO, this test would hang since this code would never execute:
             // we'd still be waiting for the prior `wait()` tasks to finish.
-            semaphore.signal()
+            await semaphore.signal()
         }
-        await systemUnderTest.enqueueAndWait { _ in /* Drain the queue */ }
+        await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
+    }
+
+    func test_enqueueAndWait_executesOnMainThread() async {
+        await systemUnderTest.enqueueAndWait {
+            XCTAssertTrue(Thread.isMainThread)
+        }
     }
 
     func test_enqueueAndWait_allowsReentrancy() async {
-        await systemUnderTest.enqueueAndWait { [systemUnderTest] counter in
-            await systemUnderTest.enqueueAndWait { counter in
-                counter.incrementAndExpectCount(equals: 1)
+        await systemUnderTest.enqueueAndWait { [systemUnderTest, counter] in
+            await systemUnderTest.enqueueAndWait { [counter] in
+                await counter.incrementAndExpectCount(equals: 1)
             }
-            counter.incrementAndExpectCount(equals: 2)
+            await counter.incrementAndExpectCount(equals: 2)
         }
-    }
-
-    func test_enqueue_executesEnqueuedTasksAfterReceiverIsDeallocated() async {
-        var systemUnderTest: ActorQueue<Counter>? = ActorQueue()
-        systemUnderTest?.adoptExecutionContext(of: counter)
-
-        let expectation = self.expectation(description: #function)
-        let semaphore = Semaphore()
-        systemUnderTest?.enqueue { counter in
-            // Make the task wait.
-            await semaphore.wait()
-            counter.incrementAndExpectCount(equals: 1)
-            expectation.fulfill()
-        }
-        weak var queue = systemUnderTest
-        // Nil out our reference to the queue to show that the enqueued tasks will still complete
-        systemUnderTest = nil
-        XCTAssertNil(queue)
-        // Signal the semaphore to unlock the enqueued tasks.
-        await semaphore.signal()
-
-        await waitForExpectations(timeout: 1.0)
     }
 
     func test_enqueue_doesNotRetainTaskAfterExecution() async {
@@ -184,8 +135,8 @@ final class ActorQueueTests: XCTestCase {
 
     func test_enqueueAndWait_sendsEventsInOrder() async {
         for iteration in 1...1_000 {
-            systemUnderTest.enqueue { counter in
-                counter.incrementAndExpectCount(equals: iteration)
+            systemUnderTest.enqueue { [counter] in
+                await counter.incrementAndExpectCount(equals: iteration)
             }
 
             guard iteration % 25 == 0 else {
@@ -193,16 +144,17 @@ final class ActorQueueTests: XCTestCase {
                 continue
             }
 
-            await systemUnderTest.enqueueAndWait { counter in
-                XCTAssertEqual(counter.count, iteration)
+            await systemUnderTest.enqueueAndWait { [counter] in
+                let count = await counter.count
+                XCTAssertEqual(count, iteration)
             }
         }
-        await systemUnderTest.enqueueAndWait { _ in /* Drain the queue */ }
+        await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
     func test_enqueueAndWait_canReturn() async {
         let expectedValue = UUID()
-        let returnedValue = await systemUnderTest.enqueueAndWait { _ in expectedValue }
+        let returnedValue = await systemUnderTest.enqueueAndWait { expectedValue }
         XCTAssertEqual(expectedValue, returnedValue)
     }
 
@@ -212,7 +164,7 @@ final class ActorQueueTests: XCTestCase {
         }
         let expectedError = TestError()
         do {
-            try await systemUnderTest.enqueueAndWait { _ in throw expectedError }
+            try await systemUnderTest.enqueueAndWait { throw expectedError }
         } catch {
             XCTAssertEqual(error as? TestError, expectedError)
         }
@@ -220,6 +172,6 @@ final class ActorQueueTests: XCTestCase {
 
     // MARK: Private
 
-    private var systemUnderTest = ActorQueue<Counter>()
+    private var systemUnderTest = MainActorQueue()
     private var counter = Counter()
 }
