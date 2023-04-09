@@ -96,9 +96,10 @@ public final class MainActorQueue: Sendable {
 }
 
 extension MainActor {
+    @MainActor
     fileprivate func suspendUntilStarted(_ task: @escaping @Sendable @MainActor () async -> Void) async {
         // Suspend the calling code until our enqueued task starts.
-        await withUnsafeContinuation { continuation in
+        await withUnsafeContinuation { @MainActor continuation in
             // Utilize the serial (but not FIFO) @MainActor context to execute the task without requiring the calling method to wait for the task to complete.
             Task { @MainActor in
                 // Signal that the task has started. Since this `task` is executing on the main actor's execution context, the order of execution is guaranteed.
