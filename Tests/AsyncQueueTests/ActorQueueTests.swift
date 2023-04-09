@@ -133,7 +133,7 @@ final class ActorQueueTests: XCTestCase {
         // Signal the semaphore to unlock the enqueued tasks.
         await semaphore.signal()
 
-        await waitForExpectations(timeout: 1.0)
+        await fulfillment(of: [expectation], timeout: 1.0)
     }
 
     func test_enqueue_doesNotRetainTaskAfterExecution() async {
@@ -177,7 +177,7 @@ final class ActorQueueTests: XCTestCase {
         // Allow the enqueued task to complete.
         await asyncSemaphore.signal()
         // Make sure the task has completed.
-        await waitForExpectations(timeout: 1.0)
+        await fulfillment(of: [expectation], timeout: 1.0)
 
         XCTAssertNil(referenceHolder.weakReference)
     }

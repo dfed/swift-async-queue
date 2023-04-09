@@ -128,7 +128,7 @@ final class MainActorQueueTests: XCTestCase {
         // Allow the enqueued task to complete.
         await asyncSemaphore.signal()
         // Make sure the task has completed.
-        await waitForExpectations(timeout: 1.0)
+        await fulfillment(of: [expectation], timeout: 1.0)
 
         XCTAssertNil(referenceHolder.weakReference)
     }
