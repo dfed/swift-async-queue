@@ -30,7 +30,7 @@ public final class MainActorQueue: Sendable {
     // MARK: Initialization
 
     /// Instantiates a main actor queue.
-    public init() {
+    init() {
         var capturedTaskStreamContinuation: AsyncStream<@Sendable @MainActor () async -> Void>.Continuation? = nil
         let taskStream = AsyncStream<@Sendable @MainActor () async -> Void> { continuation in
             capturedTaskStreamContinuation = continuation
