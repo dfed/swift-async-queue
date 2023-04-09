@@ -52,7 +52,7 @@ public final class MainActorQueue: Sendable {
 
     // MARK: Public
 
-    /// An easily accessible instance of a `MainActorQueue`.
+    /// The global `MainActorQueue` instance.
     public static let shared = MainActorQueue()
 
     /// Schedules an asynchronous task for execution and immediately returns.
