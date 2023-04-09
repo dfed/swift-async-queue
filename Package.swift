@@ -1,4 +1,4 @@
-// swift-tools-version: 5.7
+// swift-tools-version: 5.8
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -24,9 +24,7 @@ let package = Package(
             name: "AsyncQueueTests",
             dependencies: ["AsyncQueue"],
             swiftSettings: [
-                // TODO: Adopt `enableUpcomingFeature` once available.
-                // https://github.com/apple/swift-evolution/blob/main/proposals/0362-piecemeal-future-features.md
-                .unsafeFlags(["-Xfrontend", "-strict-concurrency=complete"])
+                .enableUpcomingFeature("StrictConcurrency")
             ]),
     ]
 )
