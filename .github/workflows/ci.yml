@@ -7,23 +7,21 @@ on:
   pull_request:
 
 jobs:
-   # TODO: Uncomment pod-lint once we bump Cococapods.
-   # We need a release with https://github.com/CocoaPods/CocoaPods/pull/11660
-  # pod-lint:
-  #   name: Pod Lint
-  #   runs-on: macOS-12
-  #   steps:
-  #     - uses: ruby/setup-ruby@v1
-  #       with:
-  #         ruby-version: '2.7.6'
-  #     - name: Checkout Repo
-  #       uses: actions/checkout@v3
-  #     - name: Bundle Install
-  #       run: bundle install
-  #     - name: Select Xcode Version
-  #       run: sudo xcode-select --switch /Applications/Xcode_14.1.0.app/Contents/Developer
-  #     - name: Lint Podspec
-  #       run: bundle exec pod lib lint --verbose --fail-fast --swift-version=5.7
+  pod-lint:
+    name: Pod Lint
+    runs-on: macOS-12
+    steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '2.7.6'
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+      - name: Bundle Install
+        run: bundle install
+      - name: Select Xcode Version
+        run: sudo xcode-select --switch /Applications/Xcode_14.1.0.app/Contents/Developer
+      - name: Lint Podspec
+        run: bundle exec pod lib lint --verbose --fail-fast --swift-version=5.7
   spm-14:
     name: Build Xcode 14
     runs-on: macOS-12
