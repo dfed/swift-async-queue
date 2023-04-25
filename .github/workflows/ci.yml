@@ -9,22 +9,19 @@ on:
 jobs:
   pod-lint:
     name: Pod Lint
-    runs-on: macOS-12
+    runs-on: macos-13
     steps:
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '2.7.6'
       - name: Checkout Repo
         uses: actions/checkout@v3
       - name: Bundle Install
         run: bundle install
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_14.1.0.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_14.3.0.app/Contents/Developer
       - name: Lint Podspec
-        run: bundle exec pod lib lint --verbose --fail-fast --swift-version=5.7
+        run: bundle exec pod lib lint --verbose --fail-fast --swift-version=5.8
   spm-14:
     name: Build Xcode 14
-    runs-on: macOS-12
+    runs-on: macos-13
     strategy:
       matrix:
         platforms: [
@@ -33,15 +30,12 @@ jobs:
         ]
       fail-fast: false
     steps:
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '2.7.6'
       - name: Checkout Repo
         uses: actions/checkout@v3
       - name: Bundle Install
         run: bundle install
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_14.1.0.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_14.3.0.app/Contents/Developer
       - name: Build and Test Framework
         run: Scripts/build.swift ${{ matrix.platforms }}
       - name: Prepare Coverage Reports
@@ -51,16 +45,13 @@ jobs:
         uses: codecov/codecov-action@v3
   spm-14-swift:
     name: Swift Build Xcode 14
-    runs-on: macOS-12
+    runs-on: macos-13
     steps:
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '2.7.6'
       - name: Checkout Repo
         uses: actions/checkout@v3
       - name: Bundle Install
         run: bundle install
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_14.1.0.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_14.3.0.app/Contents/Developer
       - name: Build and Test Framework
         run: xcrun swift test -c release -Xswiftc -enable-testing

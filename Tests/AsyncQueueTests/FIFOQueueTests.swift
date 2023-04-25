@@ -216,7 +216,7 @@ final class FIFOQueueTests: XCTestCase {
         // Signal the semaphore to unlock the remaining enqueued tasks.
         await semaphore.signal()
 
-        await waitForExpectations(timeout: 1.0)
+        await fulfillment(of: [expectation], timeout: 1.0)
     }
 
     func test_enqueueOn_executesAfterReceiverIsDeallocated() async {
@@ -241,7 +241,7 @@ final class FIFOQueueTests: XCTestCase {
         // Signal the semaphore to unlock the remaining enqueued tasks.
         await semaphore.signal()
 
-        await waitForExpectations(timeout: 1.0)
+        await fulfillment(of: [expectation], timeout: 1.0)
     }
 
     func test_enqueue_doesNotRetainTaskAfterExecution() async {
