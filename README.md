@@ -196,7 +196,7 @@ To install swift-async-queue in your iOS project with [CocoaPods](http://cocoapo
 
 ```
 platform :ios, '13.0'
-pod 'AsyncQueue', '~> 0.3.0'
+pod 'AsyncQueue', '~> 0.4.0'
 ```
 
 ## Contributing
