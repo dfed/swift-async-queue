@@ -118,7 +118,7 @@ private extension Semaphore {
     /// Enqueues an asynchronous task and increments a counter after the task completes.
     /// This method suspends the caller until the asynchronous task has begun, ensuring ordered execution of enqueued tasks.
     /// - Parameter task: A unit of work that returns work to execute after the task completes and the count is incremented.
-    func enqueueAndCount(using counter: UnsafeCounter, _ task: @escaping @Sendable (isolated Semaphore) async -> ((isolated Semaphore) -> Void)?) async {
+    func enqueueAndCount(using counter: UnsafeCounter, _ task: @escaping @Sendable (isolated Semaphore) async -> (@Sendable (isolated Semaphore) -> Void)?) async {
         // Await the start of the soon-to-be-enqueued `Task` with a continuation.
         await withCheckedContinuation { continuation in
             // Re-enter the semaphore's ordered context but don't wait for the result.
