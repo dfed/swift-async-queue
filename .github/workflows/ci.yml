@@ -16,7 +16,7 @@ jobs:
       - name: Bundle Install
         run: bundle install
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_14.3.0.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_14.3.1.app/Contents/Developer
       - name: Lint Podspec
         run: bundle exec pod lib lint --verbose --fail-fast --swift-version=5.8
   spm-14:
@@ -35,7 +35,7 @@ jobs:
       - name: Bundle Install
         run: bundle install
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_14.3.0.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_14.3.1.app/Contents/Developer
       - name: Build and Test Framework
         run: Scripts/build.swift ${{ matrix.platforms }}
       - name: Prepare Coverage Reports
@@ -52,6 +52,6 @@ jobs:
       - name: Bundle Install
         run: bundle install
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_14.3.0.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_14.3.1.app/Contents/Developer
       - name: Build and Test Framework
         run: xcrun swift test -c release -Xswiftc -enable-testing
