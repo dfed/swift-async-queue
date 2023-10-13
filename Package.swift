@@ -19,7 +19,10 @@ let package = Package(
     targets: [
         .target(
             name: "AsyncQueue",
-            dependencies: []),
+            dependencies: [],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]),
         .testTarget(
             name: "AsyncQueueTests",
             dependencies: ["AsyncQueue"],

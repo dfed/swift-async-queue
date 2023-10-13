@@ -60,7 +60,6 @@ func testFIFOQueueOrdering() async {
             }
         }
 
-        nonisolated
         func flushQueue() async {
             await queue.enqueueAndWait { }
         }
@@ -110,7 +109,6 @@ func testActorQueueOrdering() async {
             }
         }
 
-        nonisolated
         func flushQueue() async {
             await queue.enqueueAndWait { _ in }
         }
@@ -148,7 +146,6 @@ func testMainActorQueueOrdering() async {
             }
         }
 
-        nonisolated
         func flushQueue() async {
             await MainActorQueue.shared.enqueueAndWait { }
         }
