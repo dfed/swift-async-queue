@@ -40,7 +40,6 @@
 ///         }
 ///     }
 ///
-///     nonisolated
 ///     public func retrieveLogs() async -> [String] {
 ///         await queue.enqueueAndWait { myself in myself.logs }
 ///     }
