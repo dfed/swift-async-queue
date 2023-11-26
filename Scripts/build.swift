@@ -167,7 +167,6 @@ guard CommandLine.arguments.count > 1 else {
 
 let rawPlatforms = CommandLine.arguments[1].components(separatedBy: ",")
 
-var isFirstRun = true
 for rawPlatform in rawPlatforms {
     guard let platform = Platform(rawValue: rawPlatform) else {
         print("Received unknown platform type \(rawPlatform)")
@@ -200,5 +199,4 @@ for rawPlatform in rawPlatforms {
     xcodeBuildArguments.append("-run-tests-until-failure")
 
     try execute(commandPath: "/usr/bin/xcodebuild", arguments: xcodeBuildArguments)
-    isFirstRun = false
 }
