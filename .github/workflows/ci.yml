@@ -16,45 +16,9 @@ jobs:
       - name: Bundle Install
         run: bundle install
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_14.3.1.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_15.0.1.app/Contents/Developer
       - name: Lint Podspec
-        run: bundle exec pod lib lint --verbose --fail-fast --swift-version=5.8
-  spm-14:
-    name: Build Xcode 14
-    runs-on: macos-13
-    strategy:
-      matrix:
-        platforms: [
-          'iOS_16,watchOS_9',
-          'macOS_13,tvOS_16',
-        ]
-      fail-fast: false
-    steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v3
-      - name: Bundle Install
-        run: bundle install
-      - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_14.3.1.app/Contents/Developer
-      - name: Build and Test Framework
-        run: Scripts/build.swift ${{ matrix.platforms }}
-      - name: Prepare Coverage Reports
-        run: ./Scripts/prepare-coverage-reports.sh
-      - name: Upload Coverage Reports
-        if: success()
-        uses: codecov/codecov-action@v3
-  spm-14-swift:
-    name: Swift Build Xcode 14
-    runs-on: macos-13
-    steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v3
-      - name: Bundle Install
-        run: bundle install
-      - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_14.3.1.app/Contents/Developer
-      - name: Build and Test Framework
-        run: xcrun swift test -c release -Xswiftc -enable-testing
+        run: bundle exec pod lib lint --verbose --fail-fast --swift-version=5.9
   spm-15:
     name: Build Xcode 15
     runs-on: macos-13
@@ -71,7 +35,7 @@ jobs:
       - name: Bundle Install
         run: bundle install
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_15.0.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_15.0.1.app/Contents/Developer
       - name: Build and Test Framework
         run: Scripts/build.swift ${{ matrix.platforms }}
       - name: Prepare Coverage Reports
@@ -88,6 +52,6 @@ jobs:
       - name: Bundle Install
         run: bundle install
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_15.0.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_15.0.1.app/Contents/Developer
       - name: Build and Test Framework
         run: xcrun swift test -c release -Xswiftc -enable-testing

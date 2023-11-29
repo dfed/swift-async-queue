@@ -31,13 +31,8 @@ public final class MainActorQueue: Sendable {
 
     /// Instantiates a main actor queue.
     init() {
-        var capturedTaskStreamContinuation: AsyncStream<@Sendable @MainActor () async -> Void>.Continuation? = nil
-        let taskStream = AsyncStream<@Sendable @MainActor () async -> Void> { continuation in
-            capturedTaskStreamContinuation = continuation
-        }
-        // Continuation will be captured during stream creation, so it is safe to force unwrap here.
-        // If this force-unwrap fails, something is fundamentally broken in the Swift runtime.
-        taskStreamContinuation = capturedTaskStreamContinuation!
+        let (taskStream, taskStreamContinuation) = AsyncStream<@Sendable @MainActor () async -> Void>.makeStream()
+        self.taskStreamContinuation = taskStreamContinuation
 
         Task.detached { @MainActor in
             for await task in taskStream {

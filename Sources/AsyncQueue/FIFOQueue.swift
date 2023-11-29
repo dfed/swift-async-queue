@@ -30,13 +30,8 @@ public final class FIFOQueue: Sendable {
     /// Instantiates a FIFO queue.
     /// - Parameter priority: The baseline priority of the tasks added to the asynchronous queue.
     public init(priority: TaskPriority? = nil) {
-        var capturedTaskStreamContinuation: AsyncStream<@Sendable () async -> Void>.Continuation? = nil
-        let taskStream = AsyncStream<@Sendable () async -> Void> { continuation in
-            capturedTaskStreamContinuation = continuation
-        }
-        // Continuation will be captured during stream creation, so it is safe to force unwrap here.
-        // If this force-unwrap fails, something is fundamentally broken in the Swift runtime.
-        taskStreamContinuation = capturedTaskStreamContinuation!
+        let (taskStream, taskStreamContinuation) = AsyncStream<@Sendable () async -> Void>.makeStream()
+        self.taskStreamContinuation = taskStreamContinuation
 
         Task.detached(priority: priority) {
             for await task in taskStream {
