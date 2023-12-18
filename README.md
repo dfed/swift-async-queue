@@ -179,7 +179,7 @@ func testMainActorQueueOrdering() async {
 
 ### Swift Package Manager
 
-To install swift-async-queue in your iOS project with [Swift Package Manager](https://github.com/apple/swift-package-manager), the following lines can be added to your `Package.swift` file:
+To install swift-async-queue in your project with [Swift Package Manager](https://github.com/apple/swift-package-manager), the following lines can be added to your `Package.swift` file:
 
 ```swift
 dependencies: [
@@ -189,7 +189,7 @@ dependencies: [
 
 ### CocoaPods
 
-To install swift-async-queue in your iOS project with [CocoaPods](http://cocoapods.org), add the following to your `Podfile`:
+To install swift-async-queue in your project with [CocoaPods](http://cocoapods.org), add the following to your `Podfile`:
 
 ```
 platform :ios, '13.0'
