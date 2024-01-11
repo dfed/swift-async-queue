@@ -20,15 +20,11 @@ let package = Package(
     targets: [
         .target(
             name: "AsyncQueue",
-            dependencies: [],
-            swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency")
-            ]),
+            dependencies: []
+        ),
         .testTarget(
             name: "AsyncQueueTests",
-            dependencies: ["AsyncQueue"],
-            swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency")
-            ]),
+            dependencies: ["AsyncQueue"]
+        )
     ]
 )
