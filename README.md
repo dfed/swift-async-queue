@@ -167,12 +167,12 @@ func testMainActorQueueOrdering() async {
 
 ## Requirements
 
-* Xcode 15.0 or later.
+* Xcode 13.3 or later.
 * iOS 13 or later.
 * tvOS 13 or later.
 * watchOS 6 or later.
 * macOS 10.15 or later.
-* Swift 5.9 or later.
+* Swift 5.6 or later.
 
 ## Installation
 

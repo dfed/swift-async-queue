@@ -18,7 +18,95 @@ jobs:
       - name: Select Xcode Version
         run: sudo xcode-select --switch /Applications/Xcode_15.0.1.app/Contents/Developer
       - name: Lint Podspec
-        run: bundle exec pod lib lint --verbose --fail-fast --swift-version=5.9
+        run: bundle exec pod lib lint --verbose --fail-fast --swift-version=5.6
+  spm-13:
+    name: Build Xcode 13
+    runs-on: macOS-12
+    strategy:
+      matrix:
+        platforms: [
+          'iOS_15,watchOS_8',
+          'macOS_12,tvOS_15',
+        ]
+      fail-fast: false
+    steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.0.6'
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+      - name: Bundle Install
+        run: bundle install
+      - name: Select Xcode Version
+        run: sudo xcode-select --switch /Applications/Xcode_13.4.1.app/Contents/Developer
+      - name: Prepare Simulator Runtimes
+        run: Scripts/github/prepare-simulators.sh ${{ matrix.platforms }}
+      - name: Build and Test Framework
+        run: Scripts/build.swift ${{ matrix.platforms }}
+      - name: Prepare Coverage Reports
+        run: ./Scripts/prepare-coverage-reports.sh
+      - name: Upload Coverage Reports
+        if: success()
+        uses: codecov/codecov-action@v3
+  spm-13-swift:
+    name: Swift Build Xcode 13
+    runs-on: macOS-12
+    steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.0.6'
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+      - name: Bundle Install
+        run: bundle install
+      - name: Select Xcode Version
+        run: sudo xcode-select --switch /Applications/Xcode_13.4.1.app/Contents/Developer
+      - name: Build and Test Framework
+        run: xcrun swift test -c release -Xswiftc -enable-testing
+  spm-14:
+    name: Build Xcode 14
+    runs-on: macOS-12
+    strategy:
+      matrix:
+        platforms: [
+          'iOS_16,watchOS_9',
+          'macOS_12,tvOS_16',
+        ]
+      fail-fast: false
+    steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.0.6'
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+      - name: Bundle Install
+        run: bundle install
+      - name: Select Xcode Version
+        run: sudo xcode-select --switch /Applications/Xcode_14.0.1.app/Contents/Developer
+      - name: Prepare Simulator Runtimes
+        run: Scripts/github/prepare-simulators.sh ${{ matrix.platforms }}
+      - name: Build and Test Framework
+        run: Scripts/build.swift ${{ matrix.platforms }}
+      - name: Prepare Coverage Reports
+        run: ./Scripts/prepare-coverage-reports.sh
+      - name: Upload Coverage Reports
+        if: success()
+        uses: codecov/codecov-action@v3
+  spm-14-swift:
+    name: Swift Build Xcode 14
+    runs-on: macOS-12
+    steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.0.6'
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+      - name: Bundle Install
+        run: bundle install
+      - name: Select Xcode Version
+        run: sudo xcode-select --switch /Applications/Xcode_14.0.1.app/Contents/Developer
+      - name: Build and Test Framework
+        run: xcrun swift test -c release -Xswiftc -enable-testing
   spm-15:
     name: Build Xcode 15
     runs-on: macos-13
@@ -31,6 +119,9 @@ jobs:
         ]
       fail-fast: false
     steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.0.6'
       - name: Checkout Repo
         uses: actions/checkout@v3
       - name: Bundle Install
@@ -48,6 +139,9 @@ jobs:
     name: Swift Build Xcode 15
     runs-on: macos-13
     steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.0.6'
       - name: Checkout Repo
         uses: actions/checkout@v3
       - name: Bundle Install
@@ -60,6 +154,9 @@ jobs:
     name: "Build and Test on Linux"
     runs-on: ubuntu-latest
     steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.0.6'
       - name: Checkout Repo
         uses: actions/checkout@v4
       - name: Setup Swift Environment
