@@ -39,8 +39,6 @@ jobs:
         run: bundle install
       - name: Select Xcode Version
         run: sudo xcode-select --switch /Applications/Xcode_13.4.1.app/Contents/Developer
-      - name: Prepare Simulator Runtimes
-        run: Scripts/github/prepare-simulators.sh ${{ matrix.platforms }}
       - name: Build and Test Framework
         run: Scripts/build.swift ${{ matrix.platforms }}
       - name: Prepare Coverage Reports
@@ -83,8 +81,6 @@ jobs:
         run: bundle install
       - name: Select Xcode Version
         run: sudo xcode-select --switch /Applications/Xcode_14.0.1.app/Contents/Developer
-      - name: Prepare Simulator Runtimes
-        run: Scripts/github/prepare-simulators.sh ${{ matrix.platforms }}
       - name: Build and Test Framework
         run: Scripts/build.swift ${{ matrix.platforms }}
       - name: Prepare Coverage Reports
