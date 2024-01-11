@@ -27,6 +27,7 @@ jobs:
         platforms: [
           'iOS_17,watchOS_10',
           'macOS_14,tvOS_17',
+          'macCatalyst_14'
         ]
       fail-fast: false
     steps:
@@ -55,3 +56,21 @@ jobs:
         run: sudo xcode-select --switch /Applications/Xcode_15.0.1.app/Contents/Developer
       - name: Build and Test Framework
         run: xcrun swift test -c release -Xswiftc -enable-testing
+  linux:
+    name: "Build and Test on Linux"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+      - name: Setup Swift Environment
+        uses: swift-actions/setup-swift@v1
+        with:
+          swift-version: 5.9
+      - name: Build and Test Framework
+        run: swift test -c release --enable-code-coverage -Xswiftc -enable-testing
+      - name: Prepare Coverage Reports
+        run: |
+          llvm-cov export -format="lcov" .build/x86_64-unknown-linux-gnu/release/swift-async-queuePackageTests.xctest -instr-profile .build/x86_64-unknown-linux-gnu/release/codecov/default.profdata > coverage.lcov
+      - name: Upload Coverage Reports
+        if: success()
+        uses: codecov/codecov-action@v3

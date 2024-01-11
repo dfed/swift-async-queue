@@ -36,6 +36,8 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
     case macOS_12
     case macOS_13
     case macOS_14
+    case macCatalyst_13
+    case macCatalyst_14
     case watchOS_6
     case watchOS_7
     case watchOS_8
@@ -70,7 +72,9 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
              .macOS_11,
              .macOS_12,
              .macOS_13,
-             .macOS_14:
+             .macOS_14,
+             .macCatalyst_13,
+             .macCatalyst_14:
             return "platform=OS X"
 
         case .watchOS_6:
@@ -112,6 +116,10 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
             return "macosx13.3"
         case .macOS_14:
             return "macosx14.0"
+        case .macCatalyst_13:
+            return "macosx13.3"
+        case .macCatalyst_14:
+            return "macosx14.0"
 
         case .watchOS_6,
              .watchOS_7,
@@ -138,7 +146,9 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
              .macOS_11,
              .macOS_12,
              .macOS_13,
-             .macOS_14:
+             .macOS_14,
+             .macCatalyst_13,
+             .macCatalyst_14:
             return true
 
         case .watchOS_6,
