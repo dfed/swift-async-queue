@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name     = 'AsyncQueue'
-  s.version  = '0.5.0'
+  s.version  = '0.5.1'
   s.license  = 'MIT'
   s.summary  = 'A queue that enables ordered sending of events from synchronous to asynchronous code.'
   s.homepage = 'https://github.com/dfed/swift-async-queue'
@@ -12,4 +12,5 @@ Pod::Spec.new do |s|
   s.tvos.deployment_target = '13.0'
   s.watchos.deployment_target = '6.0'
   s.macos.deployment_target = '10.15'
+  s.visionos.deployment_target = '1'
 end
