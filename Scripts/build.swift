@@ -43,6 +43,7 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
     case watchOS_8
     case watchOS_9
     case watchOS_10
+    case visionOS_1
 
     var destination: String {
         switch self {
@@ -55,7 +56,7 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
         case .iOS_16:
             return "platform=iOS Simulator,OS=16.4,name=iPad Pro (12.9-inch) (6th generation)"
         case .iOS_17:
-            return "platform=iOS Simulator,OS=17.0.1,name=iPad Pro (12.9-inch) (6th generation)"
+            return "platform=iOS Simulator,OS=17.2,name=iPad Pro (12.9-inch) (6th generation)"
 
         case .tvOS_13:
             return "platform=tvOS Simulator,OS=13.4,name=Apple TV"
@@ -66,7 +67,7 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
         case .tvOS_16:
             return "platform=tvOS Simulator,OS=16.4,name=Apple TV"
         case .tvOS_17:
-            return "platform=tvOS Simulator,OS=17.0,name=Apple TV"
+            return "platform=tvOS Simulator,OS=17.2,name=Apple TV"
 
         case .macOS_10_15,
              .macOS_11,
@@ -86,7 +87,9 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
         case .watchOS_9:
             return "OS=9.4,name=Apple Watch Series 7 (45mm)"
         case .watchOS_10:
-            return "OS=10.0,name=Apple Watch Series 7 (45mm)"
+            return "OS=10.2,name=Apple Watch Series 7 (45mm)"
+        case .visionOS_1:
+            return "OS=1.0,name=Apple Vision Pro"
         }
     }
 
@@ -115,11 +118,11 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
         case .macOS_13:
             return "macosx13.3"
         case .macOS_14:
-            return "macosx14.0"
+            return "macosx14.2"
         case .macCatalyst_13:
             return "macosx13.3"
         case .macCatalyst_14:
-            return "macosx14.0"
+            return "macosx14.2"
 
         case .watchOS_6,
              .watchOS_7,
@@ -127,6 +130,9 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
              .watchOS_9,
              .watchOS_10:
             return "watchsimulator"
+
+        case .visionOS_1:
+            return "xrsimulator"
         }
     }
 
@@ -148,7 +154,8 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
              .macOS_13,
              .macOS_14,
              .macCatalyst_13,
-             .macCatalyst_14:
+             .macCatalyst_14,
+             .visionOS_1:
             return true
 
         case .watchOS_6,

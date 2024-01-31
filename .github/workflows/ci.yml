@@ -9,25 +9,26 @@ on:
 jobs:
   pod-lint:
     name: Pod Lint
-    runs-on: macos-13
+    runs-on: macos-14
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v3
       - name: Bundle Install
         run: bundle install
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_15.0.1.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_15.2.app/Contents/Developer
       - name: Lint Podspec
         run: bundle exec pod lib lint --verbose --fail-fast --swift-version=5.9
   spm-15:
     name: Build Xcode 15
-    runs-on: macos-13
+    runs-on: macos-14
     strategy:
       matrix:
         platforms: [
           'iOS_17,watchOS_10',
           'macOS_14,tvOS_17',
-          'macCatalyst_14'
+          'macCatalyst_14',
+          'visionOS_1'
         ]
       fail-fast: false
     steps:
@@ -36,7 +37,7 @@ jobs:
       - name: Bundle Install
         run: bundle install
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_15.0.1.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_15.2.app/Contents/Developer
       - name: Build and Test Framework
         run: Scripts/build.swift ${{ matrix.platforms }}
       - name: Prepare Coverage Reports
@@ -46,14 +47,14 @@ jobs:
         uses: codecov/codecov-action@v3
   spm-15-swift:
     name: Swift Build Xcode 15
-    runs-on: macos-13
+    runs-on: macos-14
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v3
       - name: Bundle Install
         run: bundle install
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_15.0.1.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_15.2.app/Contents/Developer
       - name: Build and Test Framework
         run: xcrun swift test -c release -Xswiftc -enable-testing
   linux:
