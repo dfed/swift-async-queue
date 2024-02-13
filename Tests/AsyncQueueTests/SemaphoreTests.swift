@@ -51,7 +51,7 @@ final class SemaphoreTests: XCTestCase {
          4. We must utilize a single actor's isolated context to avoid accidental interleaving when suspending to communicate across actor contexts.
 
          In order to ensure that we are executing the `wait()` calls before we call `signal()` _without awaiting a `wait()` call_,
-         we utilize the Sempahore's ordered execution context to enqueue ordered `Task`s similar to how an ActorQueue works.
+         we utilize the Semaphore's ordered execution context to enqueue ordered `Task`s similar to how an ActorQueue works.
          */
 
         let iterationCount = 1_000
