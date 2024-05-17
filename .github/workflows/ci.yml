@@ -10,6 +10,9 @@ jobs:
   pod-lint:
     runs-on: ubuntu-latest
     steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3.1'
       - name: Checkout Repo
         uses: actions/checkout@v4
       - name: Setup Swift Environment
@@ -33,6 +36,9 @@ jobs:
         ]
       fail-fast: false
     steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3.1'
       - name: Checkout Repo
         uses: actions/checkout@v4
       - name: Bundle Install
@@ -50,6 +56,9 @@ jobs:
     name: Swift Build Xcode 15
     runs-on: macos-14
     steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3.1'
       - name: Checkout Repo
         uses: actions/checkout@v4
       - name: Bundle Install
