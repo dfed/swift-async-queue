@@ -11,6 +11,9 @@ jobs:
     name: Pod Lint
     runs-on: macos-14
     steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3.1'
       - name: Checkout Repo
         uses: actions/checkout@v3
       - name: Bundle Install
@@ -32,6 +35,9 @@ jobs:
         ]
       fail-fast: false
     steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3.1'
       - name: Checkout Repo
         uses: actions/checkout@v3
       - name: Bundle Install
@@ -49,6 +55,9 @@ jobs:
     name: Swift Build Xcode 15
     runs-on: macos-14
     steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3.1'
       - name: Checkout Repo
         uses: actions/checkout@v3
       - name: Bundle Install
