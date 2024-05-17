@@ -8,15 +8,16 @@ on:
 
 jobs:
   pod-lint:
-    name: Pod Lint
-    runs-on: macos-14
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+      - name: Setup Swift Environment
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: 5.9
       - name: Bundle Install
         run: bundle install
-      - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_15.2.app/Contents/Developer
       - name: Lint Podspec
         run: bundle exec pod lib lint --verbose --fail-fast --swift-version=5.9
   spm-15:
@@ -33,7 +34,7 @@ jobs:
       fail-fast: false
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Bundle Install
         run: bundle install
       - name: Select Xcode Version
@@ -50,7 +51,7 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Bundle Install
         run: bundle install
       - name: Select Xcode Version
@@ -64,7 +65,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
       - name: Setup Swift Environment
-        uses: swift-actions/setup-swift@v1
+        uses: swift-actions/setup-swift@v2
         with:
           swift-version: 5.9
       - name: Build and Test Framework
