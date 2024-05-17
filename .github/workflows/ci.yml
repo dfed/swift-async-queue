@@ -52,7 +52,7 @@ jobs:
         run: ./Scripts/prepare-coverage-reports.sh
       - name: Upload Coverage Reports
         if: success()
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
   spm-15-swift:
     name: Swift Build Xcode 15
     runs-on: macos-14
@@ -85,4 +85,4 @@ jobs:
           llvm-cov export -format="lcov" .build/x86_64-unknown-linux-gnu/release/swift-async-queuePackageTests.xctest -instr-profile .build/x86_64-unknown-linux-gnu/release/codecov/default.profdata > coverage.lcov
       - name: Upload Coverage Reports
         if: success()
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
