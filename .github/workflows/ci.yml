@@ -8,6 +8,7 @@ on:
 
 jobs:
   pod-lint:
+    name: Pod Lint
     runs-on: ubuntu-latest
     steps:
       - uses: ruby/setup-ruby@v1
