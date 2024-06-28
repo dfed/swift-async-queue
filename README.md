@@ -9,7 +9,7 @@ A library of queues that enable sending ordered tasks from synchronous to asynch
 
 ## Task Ordering and Swift Concurrency
 
-Tasks sent from a synchronous context to an asynchronous context in Swift Concurrency are inherently unordered. Consider the following test:
+Tasks sent from a synchronous context to an asynchronous context in Swift Concurrency prior to Swift 6 are inherently unordered. Consider the following test:
 
 ```swift
 @MainActor
@@ -40,7 +40,7 @@ func testMainActorTaskOrdering() async {
 
 Despite the spawned `Task` inheriting the serial `@MainActor` execution context, the ordering of the scheduled asynchronous work is not guaranteed.
 
-While [actors](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID645) are great at serializing tasks, there is no simple way in the standard Swift library to send ordered tasks to them from a synchronous context.
+While [actors](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID645) are great at serializing tasks, there is no simple way in the standard Swift library prior to Swift 6 to send ordered tasks to them from a synchronous context.
 
 ### Executing asynchronous tasks in FIFO order
 
