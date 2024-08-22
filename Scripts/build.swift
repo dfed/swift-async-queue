@@ -118,11 +118,11 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
         case .macOS_13:
             return "macosx13.3"
         case .macOS_14:
-            return "macosx14.2"
+            return "macosx14.5"
         case .macCatalyst_13:
             return "macosx13.3"
         case .macCatalyst_14:
-            return "macosx14.2"
+            return "macosx14.5"
 
         case .watchOS_6,
              .watchOS_7,
