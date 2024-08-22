@@ -53,6 +53,8 @@ jobs:
       - name: Upload Coverage Reports
         if: success()
         uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
   spm-15-swift:
     name: Swift Build Xcode 15
     runs-on: macos-14
@@ -86,3 +88,5 @@ jobs:
       - name: Upload Coverage Reports
         if: success()
         uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
