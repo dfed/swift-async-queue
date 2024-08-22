@@ -34,7 +34,7 @@ public final class MainActorQueue: Sendable {
         let (taskStream, taskStreamContinuation) = AsyncStream<@Sendable @MainActor () async -> Void>.makeStream()
         self.taskStreamContinuation = taskStreamContinuation
 
-        Task.detached { @MainActor in
+        Task { @MainActor in
             for await task in taskStream {
                 await MainActor.shared.suspendUntilStarted(task)
             }

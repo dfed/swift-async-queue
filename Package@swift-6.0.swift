@@ -23,13 +23,13 @@ let package = Package(
             name: "AsyncQueue",
             dependencies: [],
             swiftSettings: [
-                .swiftLanguageVersion(.v6),
+                .swiftLanguageMode(.v6),
             ]),
         .testTarget(
             name: "AsyncQueueTests",
             dependencies: ["AsyncQueue"],
             swiftSettings: [
-                .swiftLanguageVersion(.v6),
+                .swiftLanguageMode(.v6),
             ]),
     ]
 )
