@@ -32,7 +32,6 @@ jobs:
         platforms: [
           'iOS_17,watchOS_10',
           'macOS_14,tvOS_17',
-          'macCatalyst_14',
           'visionOS_1'
         ]
       fail-fast: false
