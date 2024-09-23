@@ -47,7 +47,11 @@ jobs:
         run: sudo xcode-select --switch /Applications/Xcode_15.4.app/Contents/Developer
       - name: Download visionOS
         if: matrix.platforms == 'visionOS_1'
-        run: xcodebuild -downloadPlatform visionOS
+        run: |
+          sudo xcodebuild -runFirstLaunch
+          sudo xcrun simctl list
+          sudo xcodebuild -downloadPlatform visionOS
+          sudo xcodebuild -runFirstLaunch
       - name: Build and Test Framework
         run: Scripts/build.swift ${{ matrix.platforms }}
       - name: Prepare Coverage Reports
