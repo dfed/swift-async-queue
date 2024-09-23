@@ -167,12 +167,12 @@ func testMainActorQueueOrdering() async {
 
 ## Requirements
 
-* Xcode 15.0 or later.
+* Xcode 16.0 or later.
 * iOS 13 or later.
 * tvOS 13 or later.
 * watchOS 6 or later.
 * macOS 10.15 or later.
-* Swift 5.9 or later.
+* Swift 5.10 or later.
 
 ## Installation
 
@@ -182,7 +182,7 @@ To install swift-async-queue in your project with [Swift Package Manager](https:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/dfed/swift-async-queue", from: "0.5.0"),
+    .package(url: "https://github.com/dfed/swift-async-queue", from: "0.6.0"),
 ]
 ```
 
@@ -192,7 +192,7 @@ To install swift-async-queue in your project with [CocoaPods](http://cocoapods.o
 
 ```
 platform :ios, '13.0'
-pod 'AsyncQueue', '~> 0.5.0'
+pod 'AsyncQueue', '~> 0.6.0'
 ```
 
 ## Contributing
