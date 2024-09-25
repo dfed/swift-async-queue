@@ -36,7 +36,12 @@ public final class MainActorQueue: Sendable {
 
         Task { @MainActor in
             for await task in taskStream {
-                await MainActor.shared.suspendUntilStarted(task)
+                // In Swift 6, a `Task` enqueued from a global actor begins executing immediately on that global actor.
+                // Since we're running on the global main actor already, we can just dispatch a Task without doing fancy
+                // `suspendUntilStarted`-style work like we do in the `ActorQueue` type.
+                Task {
+                    await task()
+                }
             }
         }
     }
@@ -88,19 +93,4 @@ public final class MainActorQueue: Sendable {
     // MARK: Private
 
     private let taskStreamContinuation: AsyncStream<@Sendable @MainActor () async -> Void>.Continuation
-}
-
-extension MainActor {
-    @MainActor
-    fileprivate func suspendUntilStarted(_ task: @escaping @Sendable @MainActor () async -> Void) async {
-        // Suspend the calling code until our enqueued task starts.
-        await withUnsafeContinuation { continuation in
-            // Utilize the serial (but not FIFO) @MainActor context to execute the task without requiring the calling method to wait for the task to complete.
-            Task { @MainActor in
-                // Signal that the task has started. Since this `task` is executing on the main actor's execution context, the order of execution is guaranteed.
-                continuation.resume()
-                await task()
-            }
-        }
-    }
 }
