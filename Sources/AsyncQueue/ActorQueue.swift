@@ -60,9 +60,15 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
         let (taskStream, taskStreamContinuation) = AsyncStream<ActorTask>.makeStream()
         self.taskStreamContinuation = taskStreamContinuation
 
-        Task.detached {
+        Task { @ActorQueueSynchronization in
             for await actorTask in taskStream {
-                await actorTask.executionContext.suspendUntilStarted(actorTask.task)
+                // In Swift 6, a `Task` enqueued from a global actor begins executing immediately on that global actor.
+                // Since we're running on a global actor already, we can just dispatch a Task and get FIFO task execution.
+                // In an ideal world, we wouldn't need a global actor and would isolate this `for await` loop on the `ActorType`.
+                // However, there's no good way to do that just yet.
+                Task {
+                    await actorTask.task(actorTask.executionContext)
+                }
             }
         }
     }
@@ -147,16 +153,9 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
     }
 }
 
-extension Actor {
-    fileprivate func suspendUntilStarted(_ task: @escaping @Sendable (isolated Self) async -> Void) async {
-        // Suspend the calling code until our enqueued task starts.
-        await withUnsafeContinuation { continuation in
-            // Utilize the serial (but not FIFO) Actor context to execute the task without requiring the calling method to wait for the task to complete.
-            Task {
-                // Signal that the task has started. Since this `task` is executing on the current actor's execution context, the order of execution is guaranteed.
-                continuation.resume()
-                await task(self)
-            }
-        }
-    }
+/// A global actor used for synchronizing task execution.
+@globalActor
+private struct ActorQueueSynchronization {
+    fileprivate actor Synchronization {}
+    fileprivate static let shared = Synchronization()
 }
