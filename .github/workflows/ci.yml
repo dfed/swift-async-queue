@@ -9,44 +9,40 @@ on:
 jobs:
   pod-lint:
     name: Pod Lint
-    runs-on: ubuntu-latest
+    runs-on: macos-14
     steps:
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3.1'
       - name: Checkout Repo
         uses: actions/checkout@v4
-      - name: Setup Swift Environment
-        uses: swift-actions/setup-swift@v2
+      - uses: ruby/setup-ruby@v1
         with:
-          swift-version: 5.9
-      - name: Bundle Install
-        run: bundle install
+          ruby-version: '3.3.5'
+          bundler-cache: true
+      - name: Select Xcode Version
+        run: sudo xcode-select --switch /Applications/Xcode_16.app/Contents/Developer
       - name: Lint Podspec
-        run: bundle exec pod lib lint --verbose --fail-fast --swift-version=5.9
-  spm-15:
-    name: Build Xcode 15
+        run: bundle exec pod lib lint --verbose --fail-fast --swift-version=6.0
+  spm-16:
+    name: Build Xcode 16
     runs-on: macos-14
     strategy:
       matrix:
         platforms: [
-          'iOS_17,watchOS_10',
-          'macOS_14,tvOS_17',
-          'visionOS_1'
+          'iOS_18,watchOS_11',
+          'macOS_15,tvOS_18',
+          'visionOS_2'
         ]
       fail-fast: false
     steps:
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3.1'
       - name: Checkout Repo
         uses: actions/checkout@v4
-      - name: Bundle Install
-        run: bundle install
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3.5'
+          bundler-cache: true
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_15.4.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_16.app/Contents/Developer
       - name: Download visionOS
-        if: matrix.platforms == 'visionOS_1'
+        if: matrix.platforms == 'visionOS_2'
         run: |
           sudo xcodebuild -runFirstLaunch
           sudo xcrun simctl list
@@ -61,31 +57,27 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-  spm-15-swift:
-    name: Swift Build Xcode 15
+  spm-16-swift:
+    name: Swift Build Xcode 16
     runs-on: macos-14
     steps:
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3.1'
       - name: Checkout Repo
         uses: actions/checkout@v4
-      - name: Bundle Install
-        run: bundle install
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3.5'
+          bundler-cache: true
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_15.4.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_16.app/Contents/Developer
       - name: Build and Test Framework
         run: xcrun swift test -c release -Xswiftc -enable-testing
   linux:
     name: "Build and Test on Linux"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container: swift:6.0
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
-      - name: Setup Swift Environment
-        uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: 5.9
       - name: Build and Test Framework
         run: swift test -c release --enable-code-coverage -Xswiftc -enable-testing
       - name: Prepare Coverage Reports
