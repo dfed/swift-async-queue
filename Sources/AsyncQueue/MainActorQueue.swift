@@ -36,8 +36,9 @@ public final class MainActorQueue: Sendable {
 
         Task { @MainActor in
             for await task in taskStream {
-                // In Swift 6, a `Task` enqueued from a global actor begins executing immediately on that global actor.
-                // Since we're running on the global main actor already, we can just dispatch a Task and get FIFO task execution.
+                // In Swift 6, a `Task` enqueued from a global actor begins executing immediately on that global
+                // actor. Since we're running on the global main actor already, we can just dispatch a Task to
+                // get first-enqueued-first-start task execution.
                 Task {
                     await task()
                 }

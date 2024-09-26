@@ -63,9 +63,9 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
         Task { @ActorQueueSynchronization in
             for await actorTask in taskStream {
                 // In Swift 6, a `Task` enqueued from a global actor begins executing immediately on that global actor.
-                // Since we're running on a global actor already, we can just dispatch a Task and get FIFO task execution.
-                // In an ideal world, we wouldn't need a global actor and would isolate this `for await` loop on the `ActorType`.
-                // However, there's no good way to do that just yet.
+                // Since we're running on a global actor already, we can just dispatch a Task to get first-enqueued-first-start
+                // task execution. In an ideal world, we wouldn't need a global actor and would isolate this `for await` loop on
+                // the `ActorType`. However, there's no good way to do that just yet.
                 Task {
                     await actorTask.task(actorTask.executionContext)
                 }
