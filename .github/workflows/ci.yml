@@ -19,6 +19,12 @@ jobs:
           bundler-cache: true
       - name: Select Xcode Version
         run: sudo xcode-select --switch /Applications/Xcode_16.app/Contents/Developer
+      - name: Download visionOS
+        run: |
+          sudo xcodebuild -runFirstLaunch
+          sudo xcrun simctl list
+          sudo xcodebuild -downloadPlatform visionOS
+          sudo xcodebuild -runFirstLaunch
       - name: Lint Podspec
         run: bundle exec pod lib lint --verbose --fail-fast --swift-version=6.0
   spm-16:
