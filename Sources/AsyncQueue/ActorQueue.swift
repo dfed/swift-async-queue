@@ -89,6 +89,8 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
             }
 
             for await actorTask in taskStream {
+                // The compiler does not have a guarantee that `actor === actorTask.executionContext`, so we must `await`.
+                // In practice, however, that condition is always true, and therefore we do not end up suspending here.
                 await beginExecuting(
                     actorTask.task,
                     in: actorTask.executionContext
