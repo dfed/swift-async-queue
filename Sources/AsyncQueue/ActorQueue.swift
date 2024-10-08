@@ -78,7 +78,7 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
 
         actor.execute { [taskStream] _ in
             func beginExecuting(
-                _ operation: sending @escaping (isolated ActorType) async -> Void,
+                _ operation: @escaping (isolated ActorType) async -> Void,
                 in context: isolated ActorType
             ) {
                 // In Swift 6, a `Task` enqueued from an actor begins executing immediately on that actor.
