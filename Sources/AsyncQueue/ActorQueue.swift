@@ -57,31 +57,7 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
 
     /// Instantiates an actor queue.
     public init() {
-        let (taskStream, taskStreamContinuation) = AsyncStream<ActorTask>.makeStream()
-        self.taskStreamContinuation = taskStreamContinuation
-
-        func beginExecuting(
-            _ operation: sending @escaping (isolated ActorType) async -> Void,
-            in context: isolated ActorType
-        ) {
-            // In Swift 6, a `Task` enqueued from an actor begins executing immediately on that global actor.
-            // Since we're running on our actor's context already, we can just dispatch a Task to get first-enqueued-first-start task execution.
-            Task {
-                await operation(context)
-            }
-        }
-
-        Task {
-            // In an ideal world, we would isolate this `for await` loop to the `ActorType`.
-            // However, there's no good way to do that just yet.
-            for await actorTask in taskStream {
-                // Await switching to the ActorType context.
-                await beginExecuting(
-                    actorTask.task,
-                    in: actorTask.executionContext
-                )
-            }
-        }
+        (taskStream, taskStreamContinuation) = AsyncStream<ActorTask>.makeStream()
     }
 
     deinit {
@@ -95,10 +71,30 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
     /// **Must be called prior to enqueuing any work on the receiver.**
     ///
     /// - Parameter actor: The actor on which the queue's task will execute. This parameter is not retained by the receiver.
-    /// - Warning: Calling this method more than once will result in an assertion failure.
+    /// - Precondition: Calling this method more than once will result in a precondition failure.
     public func adoptExecutionContext(of actor: ActorType) {
-        assert(weakExecutionContext == nil) // Adopting multiple executionContexts on the same queue is API abuse.
+        precondition(weakExecutionContext == nil) // Adopting multiple executionContexts on the same queue is API abuse.
         weakExecutionContext = actor
+
+        actor.execute { [taskStream] _ in
+            func beginExecuting(
+                _ operation: sending @escaping (isolated ActorType) async -> Void,
+                in context: isolated ActorType
+            ) {
+                // In Swift 6, a `Task` enqueued from an actor begins executing immediately on that actor.
+                // Since we're running on our actor's context due to the isolated parmater, we can just dispatch a Task to get first-enqueued-first-start task execution.
+                Task {
+                    await operation(context)
+                }
+            }
+
+            for await actorTask in taskStream {
+                await beginExecuting(
+                    actorTask.task,
+                    in: actorTask.executionContext
+                )
+            }
+        }
     }
 
     /// Schedules an asynchronous task for execution and immediately returns.
@@ -140,6 +136,7 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
 
     // MARK: Private
 
+    private let taskStream: AsyncStream<ActorQueue<ActorType>.ActorTask>
     private let taskStreamContinuation: AsyncStream<ActorTask>.Continuation
 
     /// The actor on whose isolated context our tasks run, force-unwrapped.
@@ -161,5 +158,16 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
     private struct ActorTask {
         let executionContext: ActorType
         let task: @Sendable (isolated ActorType) async -> Void
+    }
+}
+
+extension Actor {
+    nonisolated
+    func execute(
+        _ task: @escaping @Sendable (isolated Self?) async -> Void
+    ) {
+        Task {
+            await task(nil)
+        }
     }
 }
