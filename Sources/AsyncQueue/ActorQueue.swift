@@ -64,7 +64,7 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
             _ operation: sending @escaping (isolated ActorType) async -> Void,
             in context: isolated ActorType
         ) {
-            // In Swift 6, a `Task` enqueued from an actor begins executing immediately on that global actor.
+            // In Swift 6, a `Task` enqueued from an actor begins executing immediately on that actor.
             // Since we're running on our actor's context already, we can just dispatch a Task to get first-enqueued-first-start task execution.
             Task {
                 await operation(context)
@@ -73,7 +73,7 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
 
         Task {
             // In an ideal world, we would isolate this `for await` loop to the `ActorType`.
-            // However, there's no good way to do that just yet.
+            // However, there's no good way to do that without retaining the actor and creating a cycle.
             for await actorTask in taskStream {
                 // Await switching to the ActorType context.
                 await beginExecuting(
