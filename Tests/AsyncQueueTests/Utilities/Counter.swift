@@ -20,12 +20,23 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import XCTest
+import Testing
 
 actor Counter {
-    func incrementAndExpectCount(equals expectedCount: Int, file: StaticString = #filePath, line: UInt = #line) {
+    func incrementAndExpectCount(
+        equals expectedCount: Int,
+        filePath: String = #filePath,
+        fileID: String = #fileID,
+        line: Int = #line,
+        column: Int = #column
+    ) {
         increment()
-        XCTAssertEqual(expectedCount, count, file: file, line: line)
+        #expect(expectedCount == count, sourceLocation: .init(
+            fileID: filePath,
+            filePath: filePath,
+            line: line,
+            column: column
+        ))
     }
 
     func increment() {

@@ -20,28 +20,22 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import XCTest
+import Testing
 
-final class SemaphoreTests: XCTestCase {
+final class SemaphoreTests {
 
-    // MARK: XCTestCase
+    // MARK: Initialization
 
-    override func setUp() async throws {
-        try await super.setUp()
-
-        systemUnderTest = Semaphore()
-    }
-
-    override func tearDown() async throws {
-        let isWaiting = await systemUnderTest.isWaiting
-        XCTAssertFalse(isWaiting)
-
-        try await super.tearDown()
+    deinit {
+        Task { [systemUnderTest] in
+            let isWaiting = await systemUnderTest.isWaiting
+            #expect(!isWaiting)
+        }
     }
 
     // MARK: Behavior Tests
 
-    func test_wait_suspendsUntilEqualNumberOfSignalCalls() async {
+    @Test func test_wait_suspendsUntilEqualNumberOfSignalCalls() async {
         /*
          This test is tricky to pull off!
          Our requirements:
@@ -61,7 +55,7 @@ final class SemaphoreTests: XCTestCase {
         for _ in 1...iterationCount {
             await systemUnderTest.enqueueAndCount(using: unsafeCounter) { systemUnderTest in
                 let didSuspend = await systemUnderTest.wait()
-                XCTAssertTrue(didSuspend)
+                #expect(didSuspend)
 
                 return { systemUnderTest in
                     // Signal that the suspended wait call above has resumed.
@@ -86,7 +80,7 @@ final class SemaphoreTests: XCTestCase {
 
             // The count will still be zero each time because we have executed one more `wait` than `signal` calls.
             let completedCountedTasks = unsafeCounter.countedTasksCompleted
-            XCTAssertEqual(completedCountedTasks, 0)
+            #expect(completedCountedTasks == 0)
 
             // Signal one last time, enabling all of the original `wait` calls to resume.
             systemUnderTest.signal()
@@ -97,19 +91,19 @@ final class SemaphoreTests: XCTestCase {
             }
 
             let tasksCompleted = unsafeCounter.countedTasksCompleted
-            XCTAssertEqual(iterationCount, tasksCompleted)
+            #expect(iterationCount == tasksCompleted)
         }
     }
 
-    func test_wait_doesNotSuspendIfSignalCalledFirst() async {
+    @Test func test_wait_doesNotSuspendIfSignalCalledFirst() async {
         await systemUnderTest.signal()
         let didSuspend = await systemUnderTest.wait()
-        XCTAssertFalse(didSuspend)
+        #expect(!didSuspend)
     }
 
     // MARK: Private
 
-    private var systemUnderTest = Semaphore()
+    private let systemUnderTest = Semaphore()
 }
 
 // MARK: - Semaphore Extension

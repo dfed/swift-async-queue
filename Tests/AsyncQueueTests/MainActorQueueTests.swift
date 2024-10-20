@@ -20,35 +20,28 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import XCTest
+import Foundation
+import Testing
 
 @testable import AsyncQueue
 
-final class MainActorQueueTests: XCTestCase {
-
-    // MARK: XCTestCase
-
-    override func setUp() async throws {
-        try await super.setUp()
-
-        systemUnderTest = MainActorQueue()
-        counter = Counter()
-    }
-
+struct MainActorQueueTests {
     // MARK: Behavior Tests
 
-    func test_shared_returnsSameInstance() async {
-        XCTAssertTrue(MainActorQueue.shared === MainActorQueue.shared)
+    @Test func test_shared_returnsSameInstance() async {
+        #expect(MainActorQueue.shared === MainActorQueue.shared)
     }
 
-    func test_enqueue_executesOnMainThread() async {
+    @Test func test_enqueue_executesOnMainThread() async {
+        let key: DispatchSpecificKey<Void> = .init()
+        DispatchQueue.main.setSpecific(key: key, value: ())
         systemUnderTest.enqueue {
-            XCTAssertTrue(Thread.isMainThread)
+            #expect(DispatchQueue.main.getSpecific(key: key) != nil)
         }
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueue_sendsEventsInOrder() async {
+    @Test func test_enqueue_sendsEventsInOrder() async {
         for iteration in 1...1_000 {
             systemUnderTest.enqueue { [counter] in
                 await counter.incrementAndExpectCount(equals: iteration)
@@ -57,7 +50,7 @@ final class MainActorQueueTests: XCTestCase {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueue_startsExecutionOfNextTaskAfterSuspension() async {
+    @Test func test_enqueue_startsExecutionOfNextTaskAfterSuspension() async {
         let semaphore = Semaphore()
 
         systemUnderTest.enqueue {
@@ -72,13 +65,15 @@ final class MainActorQueueTests: XCTestCase {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueueAndWait_executesOnMainThread() async {
+    @Test func test_enqueueAndWait_executesOnMainThread() async {
+        let key: DispatchSpecificKey<Void> = .init()
+        DispatchQueue.main.setSpecific(key: key, value: ())
         await systemUnderTest.enqueueAndWait {
-            XCTAssertTrue(Thread.isMainThread)
+            #expect(DispatchQueue.main.getSpecific(key: key) != nil)
         }
     }
 
-    func test_enqueueAndWait_allowsReentrancy() async {
+    @Test func test_enqueueAndWait_allowsReentrancy() async {
         await systemUnderTest.enqueueAndWait { [systemUnderTest, counter] in
             await systemUnderTest.enqueueAndWait { [counter] in
                 await counter.incrementAndExpectCount(equals: 1)
@@ -87,7 +82,7 @@ final class MainActorQueueTests: XCTestCase {
         }
     }
 
-    func test_enqueue_doesNotRetainTaskAfterExecution() async {
+    @Test func test_enqueue_doesNotRetainTaskAfterExecution() async {
         final class Reference: Sendable {}
         final class ReferenceHolder: @unchecked Sendable {
             init() {
@@ -107,7 +102,7 @@ final class MainActorQueueTests: XCTestCase {
         let systemUnderTest = ActorQueue<Semaphore>()
         systemUnderTest.adoptExecutionContext(of: syncSemaphore)
 
-        let expectation = self.expectation(description: #function)
+        let expectation = Expectation()
         systemUnderTest.enqueue { [reference = referenceHolder.reference] syncSemaphore in
             // Now that we've started the task and captured the reference, release the synchronous code.
             syncSemaphore.signal()
@@ -124,16 +119,16 @@ final class MainActorQueueTests: XCTestCase {
         // Wait for the asynchronous task to start.
         await syncSemaphore.wait()
         referenceHolder.clearReference()
-        XCTAssertNotNil(referenceHolder.weakReference)
+        #expect(referenceHolder.weakReference != nil)
         // Allow the enqueued task to complete.
         await asyncSemaphore.signal()
         // Make sure the task has completed.
-        await fulfillment(of: [expectation], timeout: 1.0)
+        await expectation.fulfillment(withinSeconds: 10)
 
-        XCTAssertNil(referenceHolder.weakReference)
+        #expect(referenceHolder.weakReference == nil)
     }
 
-    func test_enqueueAndWait_sendsEventsInOrder() async {
+    @Test func test_enqueueAndWait_sendsEventsInOrder() async {
         for iteration in 1...1_000 {
             systemUnderTest.enqueue { [counter] in
                 await counter.incrementAndExpectCount(equals: iteration)
@@ -146,19 +141,29 @@ final class MainActorQueueTests: XCTestCase {
 
             await systemUnderTest.enqueueAndWait { [counter] in
                 let count = await counter.count
-                XCTAssertEqual(count, iteration)
+                #expect(count == iteration)
             }
         }
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueueAndWait_canReturn() async {
+    @Test func test_enqueueAndWait_canReturn() async {
         let expectedValue = UUID()
         let returnedValue = await systemUnderTest.enqueueAndWait { expectedValue }
-        XCTAssertEqual(expectedValue, returnedValue)
+        #expect(expectedValue == returnedValue)
     }
 
-    func test_enqueueAndWait_canThrow() async {
+    @Test func test_enqueueAndWait_throwing_canReturn() async throws {
+        let expectedValue = UUID()
+        @Sendable func throwingMethod() throws {}
+        let returnedValue = try await systemUnderTest.enqueueAndWait {
+            try throwingMethod()
+            return expectedValue
+        }
+        #expect(expectedValue == returnedValue)
+    }
+
+    @Test func test_enqueueAndWait_canThrow() async {
         struct TestError: Error, Equatable {
             private let identifier = UUID()
         }
@@ -166,12 +171,12 @@ final class MainActorQueueTests: XCTestCase {
         do {
             try await systemUnderTest.enqueueAndWait { throw expectedError }
         } catch {
-            XCTAssertEqual(error as? TestError, expectedError)
+            #expect(error as? TestError == expectedError)
         }
     }
 
     // MARK: Private
 
-    private var systemUnderTest = MainActorQueue()
-    private var counter = Counter()
+    private let systemUnderTest = MainActorQueue()
+    private let counter = Counter()
 }
