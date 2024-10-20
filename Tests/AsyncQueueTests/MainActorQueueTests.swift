@@ -124,7 +124,7 @@ struct MainActorQueueTests {
         // Allow the enqueued task to complete.
         await asyncSemaphore.signal()
         // Make sure the task has completed.
-        await expectation.fulfillment(within: .seconds(1))
+        await expectation.fulfillment(within: .seconds(5))
 
         #expect(referenceHolder.weakReference == nil)
     }

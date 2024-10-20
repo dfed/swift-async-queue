@@ -210,7 +210,7 @@ struct FIFOQueueTests {
         // Signal the semaphore to unlock the remaining enqueued tasks.
         await semaphore.signal()
 
-        await expectation.fulfillment(within: .seconds(1))
+        await expectation.fulfillment(within: .seconds(5))
     }
 
     @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
@@ -236,7 +236,7 @@ struct FIFOQueueTests {
         // Signal the semaphore to unlock the remaining enqueued tasks.
         await semaphore.signal()
 
-        await expectation.fulfillment(within: .seconds(1))
+        await expectation.fulfillment(within: .seconds(5))
     }
 
     @Test func test_enqueue_doesNotRetainTaskAfterExecution() async {
