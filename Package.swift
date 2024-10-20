@@ -16,7 +16,8 @@ let package = Package(
     products: [
         .library(
             name: "AsyncQueue",
-            targets: ["AsyncQueue"]),
+            targets: ["AsyncQueue"]
+        ),
     ],
     targets: [
         .target(
@@ -24,12 +25,14 @@ let package = Package(
             dependencies: [],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
-            ]),
+            ]
+        ),
         .testTarget(
             name: "AsyncQueueTests",
             dependencies: ["AsyncQueue"],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
-            ]),
+            ]
+        ),
     ]
 )

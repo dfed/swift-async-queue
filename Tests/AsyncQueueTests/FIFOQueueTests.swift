@@ -20,23 +20,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import XCTest
+import Foundation
+import Testing
 
 @testable import AsyncQueue
 
-final class FIFOQueueTests: XCTestCase {
-
-    // MARK: XCTestCase
-
-    override func setUp() async throws {
-        try await super.setUp()
-
-        systemUnderTest = FIFOQueue()
-    }
+struct FIFOQueueTests {
 
     // MARK: Behavior Tests
 
-    func test_enqueue_sendsEventsInOrder() async {
+    @Test func test_enqueue_sendsEventsInOrder() async {
         let counter = Counter()
         for iteration in 1...1_000 {
             systemUnderTest.enqueue {
@@ -46,7 +39,7 @@ final class FIFOQueueTests: XCTestCase {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueueOn_sendsEventsInOrder() async {
+    @Test func test_enqueueOn_sendsEventsInOrder() async {
         let counter = Counter()
         for iteration in 1...1_000 {
             systemUnderTest.enqueue(on: counter) { counter in
@@ -56,7 +49,7 @@ final class FIFOQueueTests: XCTestCase {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueue_enqueueOn_sendEventsInOrder() async {
+    @Test func test_enqueue_enqueueOn_sendEventsInOrder() async {
         let counter = Counter()
         for iteration in 1...1_000 {
             if iteration % 2 == 0 {
@@ -72,14 +65,14 @@ final class FIFOQueueTests: XCTestCase {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueue_executesAsyncBlocksAtomically() async {
+    @Test func test_enqueue_executesAsyncBlocksAtomically() async {
         let semaphore = Semaphore()
         for _ in 1...1_000 {
             systemUnderTest.enqueue {
                 let isWaiting = await semaphore.isWaiting
                 // This test will fail occasionally if we aren't executing atomically.
                 // You can prove this to yourself by replacing `systemUnderTest.enqueue` above with `Task`.
-                XCTAssertFalse(isWaiting)
+                #expect(!isWaiting)
                 // Signal the semaphore before or after we wait – let the scheduler decide.
                 Task {
                     await semaphore.signal()
@@ -91,14 +84,14 @@ final class FIFOQueueTests: XCTestCase {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueueOn_executesAsyncBlocksAtomically() async {
+    @Test func test_enqueueOn_executesAsyncBlocksAtomically() async {
         let semaphore = Semaphore()
         for _ in 1...1_000 {
             systemUnderTest.enqueue(on: semaphore) { semaphore in
                 let isWaiting = semaphore.isWaiting
                 // This test will fail occasionally if we aren't executing atomically.
                 // You can prove this to yourself by replacing `systemUnderTest.enqueue` above with `Task`.
-                XCTAssertFalse(isWaiting)
+                #expect(!isWaiting)
                 // Signal the semaphore before or after we wait – let the scheduler decide.
                 Task {
                     semaphore.signal()
@@ -110,7 +103,7 @@ final class FIFOQueueTests: XCTestCase {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueue_isNotReentrant() async {
+    @Test func test_enqueue_isNotReentrant() async {
         let counter = Counter()
         systemUnderTest.enqueue { [systemUnderTest] in
             systemUnderTest.enqueue {
@@ -124,7 +117,7 @@ final class FIFOQueueTests: XCTestCase {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueueOn_isNotReentrant() async {
+    @Test func test_enqueueOn_isNotReentrant() async {
         let counter = Counter()
         systemUnderTest.enqueue(on: counter) { [systemUnderTest] counter in
             systemUnderTest.enqueue(on: counter) { counter in
@@ -138,7 +131,7 @@ final class FIFOQueueTests: XCTestCase {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueueAndWait_enqueue_areNotReentrant() async {
+    @Test func test_enqueueAndWait_enqueue_areNotReentrant() async {
         let counter = Counter()
         await systemUnderTest.enqueueAndWait { [systemUnderTest] in
             systemUnderTest.enqueue {
@@ -152,7 +145,7 @@ final class FIFOQueueTests: XCTestCase {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueueAndWaitOn_enqueueOn_areNotReentrant() async {
+    @Test func test_enqueueAndWaitOn_enqueueOn_areNotReentrant() async {
         let counter = Counter()
         await systemUnderTest.enqueueAndWait(on: counter) { [systemUnderTest] counter in
             systemUnderTest.enqueue(on: counter) { counter in
@@ -166,7 +159,7 @@ final class FIFOQueueTests: XCTestCase {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueueAndWait_enqueueOn_areNotReentrant() async {
+    @Test func test_enqueueAndWait_enqueueOn_areNotReentrant() async {
         let counter = Counter()
         await systemUnderTest.enqueueAndWait { [systemUnderTest] in
             systemUnderTest.enqueue(on: counter) { counter in
@@ -180,7 +173,7 @@ final class FIFOQueueTests: XCTestCase {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueueAndWaitOn_enqueue_areNotReentrant() async {
+    @Test func test_enqueueAndWaitOn_enqueue_areNotReentrant() async {
         let counter = Counter()
         await systemUnderTest.enqueueAndWait(on: counter) { [systemUnderTest] counter in
             systemUnderTest.enqueue {
@@ -194,10 +187,10 @@ final class FIFOQueueTests: XCTestCase {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueue_executesAfterReceiverIsDeallocated() async {
+    @Test func test_enqueue_executesAfterReceiverIsDeallocated() async {
         var systemUnderTest: FIFOQueue? = FIFOQueue()
         let counter = Counter()
-        let expectation = self.expectation(description: #function)
+        let expectation = Expectation()
         let semaphore = Semaphore()
         systemUnderTest?.enqueue {
             // Make the queue wait.
@@ -212,17 +205,17 @@ final class FIFOQueueTests: XCTestCase {
         weak var queue = systemUnderTest
         // Nil out our reference to the queue to show that the enqueued tasks will still complete
         systemUnderTest = nil
-        XCTAssertNil(queue)
+        #expect(queue == nil)
         // Signal the semaphore to unlock the remaining enqueued tasks.
         await semaphore.signal()
 
-        await fulfillment(of: [expectation], timeout: 1.0)
+        await expectation.fulfillment(within: .seconds(1))
     }
 
-    func test_enqueueOn_executesAfterReceiverIsDeallocated() async {
+    @Test func test_enqueueOn_executesAfterReceiverIsDeallocated() async {
         var systemUnderTest: FIFOQueue? = FIFOQueue()
         let counter = Counter()
-        let expectation = self.expectation(description: #function)
+        let expectation = Expectation()
         let semaphore = Semaphore()
         systemUnderTest?.enqueue(on: counter) { counter in
             // Make the queue wait.
@@ -237,14 +230,14 @@ final class FIFOQueueTests: XCTestCase {
         weak var queue = systemUnderTest
         // Nil out our reference to the queue to show that the enqueued tasks will still complete
         systemUnderTest = nil
-        XCTAssertNil(queue)
+        #expect(queue == nil)
         // Signal the semaphore to unlock the remaining enqueued tasks.
         await semaphore.signal()
 
-        await fulfillment(of: [expectation], timeout: 1.0)
+        await expectation.fulfillment(within: .seconds(1))
     }
 
-    func test_enqueue_doesNotRetainTaskAfterExecution() async {
+    @Test func test_enqueue_doesNotRetainTaskAfterExecution() async {
         final class Reference: Sendable {}
         final class ReferenceHolder: @unchecked Sendable {
             var reference: Reference? = Reference()
@@ -264,15 +257,15 @@ final class FIFOQueueTests: XCTestCase {
         // Wait for the asynchronous task to start.
         await syncSemaphore.wait()
         referenceHolder.reference = nil
-        XCTAssertNotNil(weakReference)
+        #expect(weakReference != nil)
         // Allow the enqueued task to complete.
         await asyncSemaphore.signal()
         // Make sure the task has completed.
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
-        XCTAssertNil(weakReference)
+        #expect(weakReference == nil)
     }
 
-    func test_enqueueOn_doesNotRetainTaskAfterExecution() async {
+    @Test func test_enqueueOn_doesNotRetainTaskAfterExecution() async {
         final class Reference: Sendable {}
         final class ReferenceHolder: @unchecked Sendable {
             var reference: Reference? = Reference()
@@ -292,15 +285,15 @@ final class FIFOQueueTests: XCTestCase {
         // Wait for the asynchronous task to start.
         await syncSemaphore.wait()
         referenceHolder.reference = nil
-        XCTAssertNotNil(weakReference)
+        #expect(weakReference != nil)
         // Allow the enqueued task to complete.
         await asyncSemaphore.signal()
         // Make sure the task has completed.
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
-        XCTAssertNil(weakReference)
+        #expect(weakReference == nil)
     }
 
-    func test_enqueueAndWait_sendsEventsInOrder() async {
+    @Test func test_enqueueAndWait_sendsEventsInOrder() async {
         let counter = Counter()
         for iteration in 1...1_000 {
             systemUnderTest.enqueue {
@@ -314,13 +307,13 @@ final class FIFOQueueTests: XCTestCase {
 
             await systemUnderTest.enqueueAndWait {
                 let count = await counter.count
-                XCTAssertEqual(count, iteration)
+                #expect(count == iteration)
             }
         }
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueueAndWaitOn_sendsEventsInOrder() async {
+    @Test func test_enqueueAndWaitOn_sendsEventsInOrder() async {
         let counter = Counter()
         for iteration in 1...1_000 {
             systemUnderTest.enqueue {
@@ -334,25 +327,25 @@ final class FIFOQueueTests: XCTestCase {
 
             await systemUnderTest.enqueueAndWait(on: counter) { counter in
                 let count = counter.count
-                XCTAssertEqual(count, iteration)
+                #expect(count == iteration)
             }
         }
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
-    func test_enqueueAndWait_canReturn() async {
+    @Test func test_enqueueAndWait_canReturn() async {
         let expectedValue = UUID()
         let returnedValue = await systemUnderTest.enqueueAndWait { expectedValue }
-        XCTAssertEqual(expectedValue, returnedValue)
+        #expect(expectedValue == returnedValue)
     }
 
-    func test_enqueueAndWaitOn_canReturn() async {
+    @Test func test_enqueueAndWaitOn_canReturn() async {
         let expectedValue = UUID()
         let returnedValue = await systemUnderTest.enqueueAndWait(on: Counter()) { _ in expectedValue }
-        XCTAssertEqual(expectedValue, returnedValue)
+        #expect(expectedValue == returnedValue)
     }
 
-    func test_enqueueAndWait_canThrow() async {
+    @Test func test_enqueueAndWait_canThrow() async {
         struct TestError: Error, Equatable {
             private let identifier = UUID()
         }
@@ -360,11 +353,11 @@ final class FIFOQueueTests: XCTestCase {
         do {
             try await systemUnderTest.enqueueAndWait { throw expectedError }
         } catch {
-            XCTAssertEqual(error as? TestError, expectedError)
+            #expect(error as? TestError == expectedError)
         }
     }
 
-    func test_enqueueAndWaitOn_canThrow() async {
+    @Test func test_enqueueAndWaitOn_canThrow() async {
         struct TestError: Error, Equatable {
             private let identifier = UUID()
         }
@@ -372,11 +365,11 @@ final class FIFOQueueTests: XCTestCase {
         do {
             try await systemUnderTest.enqueueAndWait(on: Counter()) { _ in throw expectedError }
         } catch {
-            XCTAssertEqual(error as? TestError, expectedError)
+            #expect(error as? TestError == expectedError)
         }
     }
 
     // MARK: Private
 
-    private var systemUnderTest = FIFOQueue()
+    private let systemUnderTest = FIFOQueue()
 }
