@@ -341,9 +341,29 @@ struct FIFOQueueTests {
         #expect(expectedValue == returnedValue)
     }
 
+    @Test func test_enqueueAndWait_throwing_canReturn() async throws {
+        let expectedValue = UUID()
+        @Sendable func throwingMethod() throws {}
+        let returnedValue = try await systemUnderTest.enqueueAndWait {
+            try throwingMethod()
+            return expectedValue
+        }
+        #expect(expectedValue == returnedValue)
+    }
+
     @Test func test_enqueueAndWaitOn_canReturn() async {
         let expectedValue = UUID()
         let returnedValue = await systemUnderTest.enqueueAndWait(on: Counter()) { _ in expectedValue }
+        #expect(expectedValue == returnedValue)
+    }
+
+    @Test func test_enqueueAndWaitOn_throwing_canReturn() async throws {
+        let expectedValue = UUID()
+        @Sendable func throwingMethod() throws {}
+        let returnedValue = try await systemUnderTest.enqueueAndWait(on: Counter()) { _ in
+            try throwingMethod()
+            return expectedValue
+        }
         #expect(expectedValue == returnedValue)
     }
 

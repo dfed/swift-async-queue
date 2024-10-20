@@ -154,6 +154,16 @@ struct MainActorQueueTests {
         #expect(expectedValue == returnedValue)
     }
 
+    @Test func test_enqueueAndWait_throwing_canReturn() async throws {
+        let expectedValue = UUID()
+        @Sendable func throwingMethod() throws {}
+        let returnedValue = try await systemUnderTest.enqueueAndWait {
+            try throwingMethod()
+            return expectedValue
+        }
+        #expect(expectedValue == returnedValue)
+    }
+
     @Test func test_enqueueAndWait_canThrow() async {
         struct TestError: Error, Equatable {
             private let identifier = UUID()
