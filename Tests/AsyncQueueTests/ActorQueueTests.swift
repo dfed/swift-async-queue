@@ -113,6 +113,7 @@ struct ActorQueueTests {
         }
     }
 
+    @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
     @MainActor
     @Test func test_enqueue_executesEnqueuedTasksAfterReceiverIsDeallocated() async {
         var systemUnderTest: ActorQueue<Counter>? = ActorQueue()
@@ -135,6 +136,7 @@ struct ActorQueueTests {
         await expectation.fulfillment(within: .seconds(1))
     }
 
+    @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
     @Test func test_enqueue_doesNotRetainTaskAfterExecution() async {
         final class Reference: Sendable {}
         final class ReferenceHolder: @unchecked Sendable {

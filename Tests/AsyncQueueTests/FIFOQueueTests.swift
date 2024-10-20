@@ -187,6 +187,7 @@ struct FIFOQueueTests {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
+    @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
     @Test func test_enqueue_executesAfterReceiverIsDeallocated() async {
         var systemUnderTest: FIFOQueue? = FIFOQueue()
         let counter = Counter()
@@ -212,6 +213,7 @@ struct FIFOQueueTests {
         await expectation.fulfillment(within: .seconds(1))
     }
 
+    @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
     @Test func test_enqueueOn_executesAfterReceiverIsDeallocated() async {
         var systemUnderTest: FIFOQueue? = FIFOQueue()
         let counter = Counter()
