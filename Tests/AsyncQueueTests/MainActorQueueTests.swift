@@ -82,7 +82,6 @@ struct MainActorQueueTests {
         }
     }
 
-    @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
     @Test func test_enqueue_doesNotRetainTaskAfterExecution() async {
         final class Reference: Sendable {}
         final class ReferenceHolder: @unchecked Sendable {
@@ -124,7 +123,7 @@ struct MainActorQueueTests {
         // Allow the enqueued task to complete.
         await asyncSemaphore.signal()
         // Make sure the task has completed.
-        await expectation.fulfillment(within: .seconds(10))
+        await expectation.fulfillment(withinSeconds: 10)
 
         #expect(referenceHolder.weakReference == nil)
     }

@@ -26,7 +26,6 @@ struct ExpectationTests {
 
     // MARK: Behavior Tests
 
-    @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
     @Test func test_fulfill_triggersExpectation() async {
         await confirmation { confirmation in
             let systemUnderTest = Expectation(
@@ -40,7 +39,6 @@ struct ExpectationTests {
         }
     }
 
-    @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
     @Test func test_fulfill_triggersExpectationOnceWhenCalledTwiceAndExpectedCountIsTwo() async {
         await confirmation { confirmation in
             let systemUnderTest = Expectation(
@@ -55,7 +53,6 @@ struct ExpectationTests {
         }
     }
 
-    @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
     @Test func test_fulfill_triggersExpectationWhenExpectedCountIsZero() async {
         await confirmation { confirmation in
             let systemUnderTest = Expectation(
@@ -69,19 +66,17 @@ struct ExpectationTests {
         }
     }
 
-    @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
     @Test func test_fulfillment_doesNotWaitIfAlreadyFulfilled() async {
         let systemUnderTest = Expectation(expectedCount: 0)
-        await systemUnderTest.fulfillment(within: .seconds(10))
+        await systemUnderTest.fulfillment(withinSeconds: 10)
     }
 
-    @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
     @MainActor // Global actor ensures Task ordering.
     @Test func test_fulfillment_waitsForFulfillment() async {
         let systemUnderTest = Expectation(expectedCount: 1)
         var hasFulfilled = false
         let wait = Task {
-            await systemUnderTest.fulfillment(within: .seconds(10))
+            await systemUnderTest.fulfillment(withinSeconds: 10)
             #expect(hasFulfilled)
         }
         Task {
@@ -91,7 +86,6 @@ struct ExpectationTests {
         await wait.value
     }
 
-    @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
     @Test func test_fulfillment_triggersFalseExpectationWhenItTimesOut() async {
         await confirmation { confirmation in
             let systemUnderTest = Expectation(
@@ -101,7 +95,7 @@ struct ExpectationTests {
                     confirmation()
                 }
             )
-            await systemUnderTest.fulfillment(within: .zero)
+            await systemUnderTest.fulfillment(withinSeconds: 0)
         }
     }
 }

@@ -45,9 +45,8 @@ public actor Expectation {
 
     // MARK: Public
 
-    @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
     public func fulfillment(
-        within duration: Duration,
+        withinSeconds seconds: UInt64,
         filePath: String = #filePath,
         fileID: String = #fileID,
         line: Int = #line,
@@ -55,8 +54,8 @@ public actor Expectation {
     ) async {
         guard !isComplete else { return }
         let wait = Task {
-            try await Task.sleep(for: duration)
-            expect(isComplete, "Expectation not fulfilled within \(duration)", .init(
+            try await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+            expect(isComplete, "Expectation not fulfilled within \(seconds) seconds", .init(
                 fileID: filePath,
                 filePath: filePath,
                 line: line,
