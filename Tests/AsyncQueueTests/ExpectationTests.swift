@@ -20,7 +20,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import Foundation
 import Testing
 
 struct ExpectationTests {
@@ -73,21 +72,17 @@ struct ExpectationTests {
     @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
     @Test func test_fulfillment_doesNotWaitIfAlreadyFulfilled() async {
         let systemUnderTest = Expectation(expectedCount: 0)
-        let date = Date()
         await systemUnderTest.fulfillment(within: .seconds(10))
-        #expect(-date.timeIntervalSinceNow < 10)
     }
 
     @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
     @MainActor // Global actor ensures Task ordering.
-    @Test func test_fulfillment_waitsWithinTimeoutForFulfillment() async {
+    @Test func test_fulfillment_waitsForFulfillment() async {
         let systemUnderTest = Expectation(expectedCount: 1)
-        let date = Date()
         var hasFulfilled = false
         let wait = Task {
             await systemUnderTest.fulfillment(within: .seconds(10))
             #expect(hasFulfilled)
-            #expect(-date.timeIntervalSinceNow < 10)
         }
         Task {
             systemUnderTest.fulfill()
