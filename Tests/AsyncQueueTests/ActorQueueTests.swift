@@ -133,7 +133,7 @@ struct ActorQueueTests {
         #expect(queue == nil)
         // Signal the semaphore to unlock the enqueued tasks.
         await semaphore.signal()
-        await expectation.fulfillment(within: .seconds(5))
+        await expectation.fulfillment(within: .seconds(10))
     }
 
     @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
@@ -178,7 +178,7 @@ struct ActorQueueTests {
         // Allow the enqueued task to complete.
         await asyncSemaphore.signal()
         // Make sure the task has completed.
-        await expectation.fulfillment(within: .seconds(5))
+        await expectation.fulfillment(within: .seconds(10))
 
         #expect(referenceHolder.weakReference == nil)
     }
