@@ -28,10 +28,12 @@ import Testing
 struct MainActorQueueTests {
     // MARK: Behavior Tests
 
+    @TestingQueue
     @Test func test_shared_returnsSameInstance() async {
         #expect(MainActorQueue.shared === MainActorQueue.shared)
     }
 
+    @TestingQueue
     @Test func test_enqueue_executesOnMainThread() async {
         let key: DispatchSpecificKey<Void> = .init()
         DispatchQueue.main.setSpecific(key: key, value: ())
@@ -41,6 +43,7 @@ struct MainActorQueueTests {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
+    @TestingQueue
     @Test func test_enqueue_sendsEventsInOrder() async {
         for iteration in 1...1_000 {
             systemUnderTest.enqueue { [counter] in
@@ -50,6 +53,7 @@ struct MainActorQueueTests {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
+    @TestingQueue
     @Test func test_enqueue_startsExecutionOfNextTaskAfterSuspension() async {
         let semaphore = Semaphore()
 
@@ -65,6 +69,7 @@ struct MainActorQueueTests {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
+    @TestingQueue
     @Test func test_enqueueAndWait_executesOnMainThread() async {
         let key: DispatchSpecificKey<Void> = .init()
         DispatchQueue.main.setSpecific(key: key, value: ())
@@ -73,6 +78,7 @@ struct MainActorQueueTests {
         }
     }
 
+    @TestingQueue
     @Test func test_enqueueAndWait_allowsReentrancy() async {
         await systemUnderTest.enqueueAndWait { [systemUnderTest, counter] in
             await systemUnderTest.enqueueAndWait { [counter] in
@@ -82,6 +88,7 @@ struct MainActorQueueTests {
         }
     }
 
+    @TestingQueue
     @Test func test_enqueue_doesNotRetainTaskAfterExecution() async {
         final class Reference: Sendable {}
         final class ReferenceHolder: @unchecked Sendable {
@@ -128,6 +135,7 @@ struct MainActorQueueTests {
         #expect(referenceHolder.weakReference == nil)
     }
 
+    @TestingQueue
     @Test func test_enqueueAndWait_sendsEventsInOrder() async {
         for iteration in 1...1_000 {
             systemUnderTest.enqueue { [counter] in
@@ -147,12 +155,14 @@ struct MainActorQueueTests {
         await systemUnderTest.enqueueAndWait { /* Drain the queue */ }
     }
 
+    @TestingQueue
     @Test func test_enqueueAndWait_canReturn() async {
         let expectedValue = UUID()
         let returnedValue = await systemUnderTest.enqueueAndWait { expectedValue }
         #expect(expectedValue == returnedValue)
     }
 
+    @TestingQueue
     @Test func test_enqueueAndWait_throwing_canReturn() async throws {
         let expectedValue = UUID()
         @Sendable func throwingMethod() throws {}
@@ -163,6 +173,7 @@ struct MainActorQueueTests {
         #expect(expectedValue == returnedValue)
     }
 
+    @TestingQueue
     @Test func test_enqueueAndWait_canThrow() async {
         struct TestError: Error, Equatable {
             private let identifier = UUID()
@@ -179,4 +190,11 @@ struct MainActorQueueTests {
 
     private let systemUnderTest = MainActorQueue()
     private let counter = Counter()
+}
+
+/// A global actor that forces the above `MainActorQueueTests` to not run on `main`, where tests may otherwise deadlock due to waiting for `main` from `main`.
+@globalActor
+private struct TestingQueue {
+    fileprivate actor Shared {}
+    fileprivate static let shared = Shared()
 }
