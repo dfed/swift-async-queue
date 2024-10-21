@@ -4,7 +4,7 @@ Keep your Pull Requests small. Small PRs are easier to reason about which makes 
 
 ### Issues before features
 
-If you want to add a feature, please file an [Issue](../../issues) first. An Issue gives us the opportunity to discuss the requirements and implications of a feature with you before you start writing code.
+If you want to add a feature, please file an [Issue](https://github.com/dfed/swift-async-queue/issues) first. An Issue gives us the opportunity to discuss the requirements and implications of a feature with you before you start writing code.
 
 ### Backwards compatibility
 
