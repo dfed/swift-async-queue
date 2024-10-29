@@ -5,11 +5,11 @@
 [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fdfed%2Fswift-async-queue%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/dfed/swift-async-queue)
 [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fdfed%2Fswift-async-queue%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/dfed/swift-async-queue)
 
-A library of queues that enable sending ordered tasks from synchronous to asynchronous contexts.
+A library of queues that enable sending ordered tasks from nonisolated to asynchronous contexts.
 
 ## Task Ordering and Swift Concurrency
 
-Tasks sent from a synchronous context to an asynchronous context in Swift Concurrency are inherently unordered. Consider the following test:
+Tasks sent from a nonisolated context to an asynchronous context in Swift Concurrency are inherently unordered. Consider the following test:
 
 ```swift
 func testActorTaskOrdering() async {
