@@ -37,9 +37,9 @@ func testActorTaskOrdering() async {
 }
 ```
 
-Despite the spawned `Task` inheriting the serial `@MainActor` execution context, the ordering of the scheduled asynchronous work is not guaranteed.
+Because the spawned `Task` inherits a nonisolated execution context, the ordering of the scheduled asynchronous work is not guaranteed.
 
-While [actors](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID645) are great at serializing tasks, there is no simple way in the standard Swift library prior to Swift 6 to send ordered tasks to them from a synchronous context.
+While [actors](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID645) are great at serializing tasks, there is no simple way in the standard Swift library to send ordered tasks to them from a nonisolated synchronous context, or from multiple execution contexts.
 
 ### Executing asynchronous tasks in FIFO order
 
