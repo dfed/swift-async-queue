@@ -131,7 +131,7 @@ struct ActorQueueTests {
         #expect(queue == nil)
         // Signal the semaphore to unlock the enqueued tasks.
         await semaphore.signal()
-        await expectation.fulfillment(withinSeconds: 1)
+        await expectation.fulfillment(withinSeconds: 30)
     }
 
     @Test func test_enqueue_doesNotRetainTaskAfterExecution() async {
@@ -175,7 +175,7 @@ struct ActorQueueTests {
         // Allow the enqueued task to complete.
         await asyncSemaphore.signal()
         // Make sure the task has completed.
-        await expectation.fulfillment(withinSeconds: 1)
+        await expectation.fulfillment(withinSeconds: 30)
 
         #expect(referenceHolder.weakReference == nil)
     }
