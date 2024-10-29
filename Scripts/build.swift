@@ -31,7 +31,7 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
     var destination: String {
         switch self {
         case .iOS_18:
-            "platform=iOS Simulator,OS=18.1,name=iPad Pro (12.9-inch) (6th generation)"
+            "platform=iOS Simulator,OS=18.1,name=iPad (10th generation)"
 
         case .tvOS_18:
             "platform=tvOS Simulator,OS=18.1,name=Apple TV"
@@ -41,7 +41,7 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
             "platform=OS X"
 
         case .watchOS_11:
-            "OS=11.1,name=Apple Watch Series 7 (45mm)"
+            "OS=11.1,name=Apple Watch Series 10 (46mm)"
 
         case .visionOS_2:
             "OS=2.1,name=Apple Vision Pro"
