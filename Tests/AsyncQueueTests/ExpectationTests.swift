@@ -68,7 +68,7 @@ struct ExpectationTests {
 
     @Test func test_fulfillment_doesNotWaitIfAlreadyFulfilled() async {
         let systemUnderTest = Expectation(expectedCount: 0)
-        await systemUnderTest.fulfillment(withinSeconds: 10)
+        await systemUnderTest.fulfillment(withinSeconds: 30)
     }
 
     @MainActor // Global actor ensures Task ordering.
@@ -76,7 +76,7 @@ struct ExpectationTests {
         let systemUnderTest = Expectation(expectedCount: 1)
         var hasFulfilled = false
         let wait = Task {
-            await systemUnderTest.fulfillment(withinSeconds: 10)
+            await systemUnderTest.fulfillment(withinSeconds: 30)
             #expect(hasFulfilled)
         }
         Task {

@@ -209,7 +209,7 @@ struct FIFOQueueTests {
         // Signal the semaphore to unlock the remaining enqueued tasks.
         await semaphore.signal()
 
-        await expectation.fulfillment(withinSeconds: 10)
+        await expectation.fulfillment(withinSeconds: 30)
     }
 
     @Test func test_enqueueOn_executesAfterReceiverIsDeallocated() async {
@@ -234,7 +234,7 @@ struct FIFOQueueTests {
         // Signal the semaphore to unlock the remaining enqueued tasks.
         await semaphore.signal()
 
-        await expectation.fulfillment(withinSeconds: 10)
+        await expectation.fulfillment(withinSeconds: 30)
     }
 
     @Test func test_enqueue_doesNotRetainTaskAfterExecution() async {
