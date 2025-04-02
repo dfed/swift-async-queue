@@ -90,7 +90,7 @@ extension Task {
     public init(
         priority: TaskPriority? = nil,
         enqueuedOn fifoQueue: FIFOQueue,
-        operation: @Sendable @escaping () async -> Success
+        operation: @Sendable @escaping @isolated(any) () async -> Success
     ) where Failure == Never {
         let delivery = Delivery<Success, Failure>()
         let task = FIFOQueue.FIFOTask {
@@ -133,7 +133,7 @@ extension Task {
     public init(
         priority: TaskPriority? = nil,
         enqueuedOn actorQueue: FIFOQueue,
-        operation: @escaping @Sendable () async throws -> Success
+        operation: @escaping @Sendable @isolated(any) () async throws -> Success
     ) where Failure == any Error {
         let delivery = Delivery<Success, Failure>()
         let task = FIFOQueue.FIFOTask {
