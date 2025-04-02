@@ -30,12 +30,13 @@ public final class FIFOQueue: Sendable {
     /// Instantiates a FIFO queue.
     /// - Parameter priority: The baseline priority of the tasks added to the asynchronous queue.
     public init(priority: TaskPriority? = nil) {
-        let (taskStream, taskStreamContinuation) = AsyncStream<@Sendable () async -> Void>.makeStream()
+        let (taskStream, taskStreamContinuation) = AsyncStream<FIFOTask>.makeStream()
         self.taskStreamContinuation = taskStreamContinuation
 
         Task.detached(priority: priority) {
-            for await task in taskStream {
-                await task()
+            for await fifoTask in taskStream {
+                await fifoTask.task()
+                await fifoTask.sempahore.signal()
             }
         }
     }
@@ -44,85 +45,202 @@ public final class FIFOQueue: Sendable {
         taskStreamContinuation.finish()
     }
 
-    // MARK: Public
+    // MARK: Fileprivate
 
-    /// Schedules an asynchronous task for execution and immediately returns.
-    /// The scheduled task will not execute until all prior tasks – including suspended tasks – have completed.
-    /// - Parameter task: The task to enqueue.
-    public func enqueue(_ task: @escaping @Sendable () async -> Void) {
-        taskStreamContinuation.yield(task)
+    fileprivate struct FIFOTask: Sendable {
+        init(task: @escaping @Sendable () async -> Void) {
+            self.task = task
+        }
+        
+        let sempahore = Semaphore()
+        let task: @Sendable () async -> Void
     }
 
-    /// Schedules an asynchronous task for execution and immediately returns.
-    /// The scheduled task will not execute until all prior tasks – including suspended tasks – have completed.
+    fileprivate let taskStreamContinuation: AsyncStream<FIFOTask>.Continuation
+}
+
+extension Task {
+    /// Runs the given nonthrowing operation asynchronously
+    /// as part of a new top-level task on behalf of the current actor.
+    /// The operation will not execute until all prior tasks – including
+    /// suspended tasks – have completed.
+    ///
+    /// Use this function when creating asynchronous work
+    /// that operates on behalf of the synchronous function that calls it.
+    /// Like `Task.detached(priority:operation:)`,
+    /// this function creates a separate, top-level task.
+    /// Unlike `Task.detached(priority:operation:)`,
+    /// the task created by `Task.init(priority:operation:)`
+    /// inherits the priority and actor context of the caller,
+    /// so the operation is treated more like an asynchronous extension
+    /// to the synchronous operation.
+    ///
+    /// You need to keep a reference to the task
+    /// if you want to cancel it by calling the `Task.cancel()` method.
+    /// Discarding your reference to a detached task
+    /// doesn't implicitly cancel that task,
+    /// it only makes it impossible for you to explicitly cancel the task.
+    ///
     /// - Parameters:
-    ///   - isolatedActor: The actor within which the task is isolated.
-    ///   - task: The task to enqueue.
-    public func enqueue<ActorType: Actor>(on isolatedActor: ActorType, _ task: @escaping @Sendable (isolated ActorType) async -> Void) {
-        taskStreamContinuation.yield { await task(isolatedActor) }
-    }
-
-    /// Schedules an asynchronous task and returns after the task is complete.
-    /// The scheduled task will not execute until all prior tasks – including suspended tasks – have completed.
-    /// - Parameter task: The task to enqueue.
-    /// - Returns: The value returned from the enqueued task.
-    public func enqueueAndWait<T: Sendable>(_ task: @escaping @Sendable () async -> T) async -> T {
-        await withUnsafeContinuation { continuation in
-            taskStreamContinuation.yield {
-                continuation.resume(returning: await task())
-            }
+    ///   - priority: The priority of the task.
+    ///     Pass `nil` to use the priority from `Task.currentPriority`.
+    ///   - fifoQueue: The queue on which to enqueue the task.
+    ///   - operation: The operation to perform.
+    @discardableResult
+    public init(
+        priority: TaskPriority? = nil,
+        enqueuedOn fifoQueue: FIFOQueue,
+        operation: @Sendable @escaping () async -> Success
+    ) where Failure == Never {
+        let delivery = Delivery<Success, Failure>()
+        let task = FIFOQueue.FIFOTask {
+            await delivery.sendValue(operation())
+        }
+        fifoQueue.taskStreamContinuation.yield(task)
+        self.init(priority: priority) {
+            await task.sempahore.wait()
+            return await delivery.getValue()
         }
     }
 
-    /// Schedules an asynchronous task and returns after the task is complete.
-    /// The scheduled task will not execute until all prior tasks – including suspended tasks – have completed.
+    /// Runs the given throwing operation asynchronously
+    /// as part of a new top-level task on behalf of the current actor.
+    /// The operation will not execute until all prior tasks – including
+    /// suspended tasks – have completed.
+    ///
+    /// Use this function when creating asynchronous work
+    /// that operates on behalf of the synchronous function that calls it.
+    /// Like `Task.detached(priority:operation:)`,
+    /// this function creates a separate, top-level task.
+    /// Unlike `Task.detached(priority:operation:)`,
+    /// the task created by `Task.init(priority:operation:)`
+    /// inherits the priority and actor context of the caller,
+    /// so the operation is treated more like an asynchronous extension
+    /// to the synchronous operation.
+    ///
+    /// You need to keep a reference to the task
+    /// if you want to cancel it by calling the `Task.cancel()` method.
+    /// Discarding your reference to a detached task
+    /// doesn't implicitly cancel that task,
+    /// it only makes it impossible for you to explicitly cancel the task.
+    ///
     /// - Parameters:
-    ///   - isolatedActor: The actor within which the task is isolated.
-    ///   - task: The task to enqueue.
-    /// - Returns: The value returned from the enqueued task.
-    public func enqueueAndWait<ActorType: Actor, T: Sendable>(on isolatedActor: isolated ActorType, _ task: @escaping @Sendable (isolated ActorType) async -> T) async -> T {
-        await withUnsafeContinuation { continuation in
-            taskStreamContinuation.yield {
-                continuation.resume(returning: await task(isolatedActor))
+    ///   - priority: The priority of the task.
+    ///     Pass `nil` to use the priority from `Task.currentPriority`.
+    ///   - fifoQueue: The queue on which to enqueue the task.
+    ///   - operation: The operation to perform.
+    @discardableResult
+    public init(
+        priority: TaskPriority? = nil,
+        enqueuedOn actorQueue: FIFOQueue,
+        operation: @escaping @Sendable () async throws -> Success
+    ) where Failure == any Error {
+        let delivery = Delivery<Success, Failure>()
+        let task = FIFOQueue.FIFOTask {
+            do {
+                try await delivery.sendValue(operation())
+            } catch {
+                await delivery.sendFailure(error)
             }
+        }
+        actorQueue.taskStreamContinuation.yield(task)
+        self.init(priority: priority) {
+            await task.sempahore.wait()
+            return try await delivery.getValue()
         }
     }
 
-    /// Schedules an asynchronous throwing task and returns after the task is complete.
-    /// The scheduled task will not execute until all prior tasks – including suspended tasks – have completed.
-    /// - Parameter task: The task to enqueue.
-    /// - Returns: The value returned from the enqueued task.
-    public func enqueueAndWait<T: Sendable>(_ task: @escaping @Sendable () async throws -> T) async throws -> T {
-        try await withUnsafeThrowingContinuation { continuation in
-            taskStreamContinuation.yield {
-                do {
-                    continuation.resume(returning: try await task())
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
-    }
-
-    /// Schedules an asynchronous throwing task and returns after the task is complete.
-    /// The scheduled task will not execute until all prior tasks – including suspended tasks – have completed.
+    /// Runs the given nonthrowing operation asynchronously
+    /// as part of a new top-level task on behalf of the current actor.
+    /// The operation will not execute until all prior tasks – including
+    /// suspended tasks – have completed.
+    ///
+    /// Use this function when creating asynchronous work
+    /// that operates on behalf of the synchronous function that calls it.
+    /// Like `Task.detached(priority:operation:)`,
+    /// this function creates a separate, top-level task.
+    /// Unlike `Task.detached(priority:operation:)`,
+    /// the task created by `Task.init(priority:operation:)`
+    /// inherits the priority and actor context of the caller,
+    /// so the operation is treated more like an asynchronous extension
+    /// to the synchronous operation.
+    ///
+    /// You need to keep a reference to the task
+    /// if you want to cancel it by calling the `Task.cancel()` method.
+    /// Discarding your reference to a detached task
+    /// doesn't implicitly cancel that task,
+    /// it only makes it impossible for you to explicitly cancel the task.
+    ///
     /// - Parameters:
-    ///   - isolatedActor: The actor within which the task is isolated.
-    ///   - task: The task to enqueue.
-    /// - Returns: The value returned from the enqueued task.
-    public func enqueueAndWait<ActorType: Actor, T: Sendable>(on isolatedActor: isolated ActorType, _ task: @escaping @Sendable (isolated ActorType) async throws -> T) async throws -> T {
-        try await withUnsafeThrowingContinuation { continuation in
-            taskStreamContinuation.yield {
-                do {
-                    continuation.resume(returning: try await task(isolatedActor))
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
+    ///   - priority: The priority of the task.
+    ///     Pass `nil` to use the priority from `Task.currentPriority`.
+    ///   - fifoQueue: The queue on which to enqueue the task.
+    ///   - isolatedActor: The actor to which the operation is isolated.
+    ///   - operation: The operation to perform.
+    @discardableResult
+    public init<ActorType: Actor>(
+        priority: TaskPriority? = nil,
+        enqueuedOn fifoQueue: FIFOQueue,
+        isolatedTo isolatedActor: ActorType,
+        operation: @Sendable @escaping (isolated ActorType) async -> Success
+    ) where Failure == Never {
+        let delivery = Delivery<Success, Failure>()
+        let task = FIFOQueue.FIFOTask {
+            await delivery.sendValue(operation(isolatedActor))
+        }
+        fifoQueue.taskStreamContinuation.yield(task)
+        self.init(priority: priority) {
+            await task.sempahore.wait()
+            return await delivery.getValue()
         }
     }
 
-    // MARK: Private
-
-    private let taskStreamContinuation: AsyncStream<@Sendable () async -> Void>.Continuation
+    /// Runs the given throwing operation asynchronously
+    /// as part of a new top-level task on behalf of the current actor.
+    /// The operation will not execute until all prior tasks – including
+    /// suspended tasks – have completed.
+    ///
+    /// Use this function when creating asynchronous work
+    /// that operates on behalf of the synchronous function that calls it.
+    /// Like `Task.detached(priority:operation:)`,
+    /// this function creates a separate, top-level task.
+    /// Unlike `Task.detached(priority:operation:)`,
+    /// the task created by `Task.init(priority:operation:)`
+    /// inherits the priority and actor context of the caller,
+    /// so the operation is treated more like an asynchronous extension
+    /// to the synchronous operation.
+    ///
+    /// You need to keep a reference to the task
+    /// if you want to cancel it by calling the `Task.cancel()` method.
+    /// Discarding your reference to a detached task
+    /// doesn't implicitly cancel that task,
+    /// it only makes it impossible for you to explicitly cancel the task.
+    ///
+    /// - Parameters:
+    ///   - priority: The priority of the task.
+    ///     Pass `nil` to use the priority from `Task.currentPriority`.
+    ///   - fifoQueue: The queue on which to enqueue the task.
+    ///   - isolatedActor: The actor to which the operation is isolated.
+    ///   - operation: The operation to perform.
+    @discardableResult
+    public init<ActorType: Actor>(
+        priority: TaskPriority? = nil,
+        enqueuedOn fifoQueue: FIFOQueue,
+        isolatedTo isolatedActor: ActorType,
+        operation: @Sendable @escaping (isolated ActorType) async throws -> Success
+    ) where Failure == any Error {
+        let delivery = Delivery<Success, Failure>()
+        let task = FIFOQueue.FIFOTask {
+            do {
+                try await delivery.sendValue(operation(isolatedActor))
+            } catch {
+                await delivery.sendFailure(error)
+            }
+        }
+        fifoQueue.taskStreamContinuation.yield(task)
+        self.init(priority: priority) {
+            await task.sempahore.wait()
+            return try await delivery.getValue()
+        }
+    }
 }

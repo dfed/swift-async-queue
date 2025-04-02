@@ -21,17 +21,17 @@
 // SOFTWARE.
 
 /// A thread-safe semaphore implementation.
-public actor Semaphore {
+actor Semaphore {
     // MARK: Initialization
 
-    public init() {}
+    init() {}
 
     // MARK: Public
 
     /// Decrement the counting semaphore. If the resulting value is less than zero, this function waits for a signal to occur before returning.
     /// - Returns: Whether the call triggered a suspension
     @discardableResult
-    public func wait() async -> Bool {
+    func wait() async -> Bool {
         count -= 1
         guard count < 0 else {
             // We don't need to wait because count is greater than or equal to zero.
@@ -45,7 +45,7 @@ public actor Semaphore {
     }
 
     /// Increment the counting semaphore. If the previous value was less than zero, this function resumes a waiting thread before returning.
-    public func signal() {
+    func signal() {
         count += 1
         guard !isWaiting else {
             // Continue waiting.
@@ -59,7 +59,7 @@ public actor Semaphore {
         continuations.removeAll()
     }
 
-    public var isWaiting: Bool {
+    var isWaiting: Bool {
         count < 0
     }
 

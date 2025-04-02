@@ -35,13 +35,13 @@
 ///
 ///     nonisolated
 ///     public func log(_ message: String) {
-///         queue.enqueue { myself in
+///         Task(enqueuedOn: queue) { myself in
 ///             myself.logs.append(message)
 ///         }
 ///     }
 ///
 ///     public func retrieveLogs() async -> [String] {
-///         await queue.enqueueAndWait { myself in myself.logs }
+///         await Task(enqueuedOn: queue) { myself in myself.logs }.value
 ///     }
 ///
 ///     private let queue = ActorQueue<LogStore>()
@@ -80,6 +80,7 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
                     actorTask.task,
                     in: actorTask.executionContext
                 )
+                await actorTask.sempahore.signal()
             }
         }
     }
@@ -101,55 +102,32 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
         weakExecutionContext = actor
     }
 
-    /// Schedules an asynchronous task for execution and immediately returns.
-    /// The scheduled task will not execute until all prior tasks have completed or suspended.
-    /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
-    public func enqueue(_ task: @escaping @Sendable (isolated ActorType) async -> Void) {
-        taskStreamContinuation.yield(ActorTask(executionContext: executionContext, task: task))
-    }
+    // MARK: Fileprivate
 
-    /// Schedules an asynchronous task and returns after the task is complete.
-    /// The scheduled task will not execute until all prior tasks have completed or suspended.
-    /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
-    /// - Returns: The value returned from the enqueued task.
-    public func enqueueAndWait<T: Sendable>(_ task: @escaping @Sendable (isolated ActorType) async -> T) async -> T {
-        let executionContext = self.executionContext // Capture/retain the executionContext before suspending.
-        return await withUnsafeContinuation { continuation in
-            taskStreamContinuation.yield(ActorTask(executionContext: executionContext) { executionContext in
-                continuation.resume(returning: await task(executionContext))
-            })
-        }
-    }
-
-    /// Schedules an asynchronous throwing task and returns after the task is complete.
-    /// The scheduled task will not execute until all prior tasks have completed or suspended.
-    /// - Parameter task: The task to enqueue. The task's parameter is a reference to the actor whose execution context has been adopted.
-    /// - Returns: The value returned from the enqueued task.
-    public func enqueueAndWait<T: Sendable>(_ task: @escaping @Sendable (isolated ActorType) async throws -> T) async throws -> T {
-        let executionContext = self.executionContext // Capture/retain the executionContext before suspending.
-        return try await withUnsafeThrowingContinuation { continuation in
-            taskStreamContinuation.yield(ActorTask(executionContext: executionContext) { executionContext in
-                do {
-                    continuation.resume(returning: try await task(executionContext))
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            })
-        }
-    }
-
-    // MARK: Private
-
-    private let taskStreamContinuation: AsyncStream<ActorTask>.Continuation
+    fileprivate let taskStreamContinuation: AsyncStream<ActorTask>.Continuation
 
     /// The actor on whose isolated context our tasks run, force-unwrapped.
     /// Utilize this accessor to retrieve the weak execution context in order to avoid repeating the below comment.
-    private var executionContext: ActorType {
+    fileprivate var executionContext: ActorType {
         // Crashing here means that this queue is being sent tasks either before an execution context has been set, or
         // after the execution context has deallocated. An ActorQueue's execution context should be set in the adopted
         // actor's `init` method, and the ActorQueue should not exceed the lifecycle of the adopted actor.
         weakExecutionContext!
     }
+
+    fileprivate struct ActorTask: Sendable {
+        init(executionContext: ActorType, task: @escaping @Sendable (isolated ActorType) async -> Void) {
+            self.executionContext = executionContext
+            self.task = task
+        }
+        
+        let executionContext: ActorType
+        let sempahore = Semaphore()
+        let task: @Sendable (isolated ActorType) async -> Void
+    }
+
+    // MARK: Private
+
     /// The actor on whose isolated context our tasks run.
     /// We must use`weak` here to avoid creating a retain cycle between the adopted actor and this actor queue.
     ///
@@ -157,9 +135,213 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
     /// 1. The lifecycle of any `ActorQueue` must not exceed the lifecycle of its adopted `actor`.
     /// 2. The adopted `actor` must set itself as the execution context for this queue within its `init` method.
     private weak var weakExecutionContext: ActorType?
+}
 
-    private struct ActorTask {
-        let executionContext: ActorType
-        let task: @Sendable (isolated ActorType) async -> Void
+extension Task {
+    /// Runs the given nonthrowing operation asynchronously
+    /// as part of a new top-level task on behalf of the current actor.
+    /// The operation will not execute until all prior tasks have
+    /// completed or suspended.
+    ///
+    /// Use this function when creating asynchronous work
+    /// that operates on behalf of the synchronous function that calls it.
+    /// Like `Task.detached(priority:operation:)`,
+    /// this function creates a separate, top-level task.
+    /// Unlike `Task.detached(priority:operation:)`,
+    /// the task created by `Task.init(priority:operation:)`
+    /// inherits the priority and actor context of the caller,
+    /// so the operation is treated more like an asynchronous extension
+    /// to the synchronous operation.
+    ///
+    /// You need to keep a reference to the task
+    /// if you want to cancel it by calling the `Task.cancel()` method.
+    /// Discarding your reference to a detached task
+    /// doesn't implicitly cancel that task,
+    /// it only makes it impossible for you to explicitly cancel the task.
+    ///
+    /// - Parameters:
+    ///   - priority: The priority of the task.
+    ///     Pass `nil` to use the priority from `Task.currentPriority`.
+    ///   - actorQueue: The queue on which to enqueue the task.
+    ///   - operation: The operation to perform.
+    @discardableResult
+    public init<ActorType: Actor>(
+        priority: TaskPriority? = nil,
+        enqueuedOn actorQueue: ActorQueue<ActorType>,
+        operation: @Sendable @escaping (isolated ActorType) async -> Success
+    ) where Failure == Never {
+        let delivery = Delivery<Success, Failure>()
+        let task = ActorQueue<ActorType>.ActorTask(
+            executionContext: actorQueue.executionContext,
+            task: { executionContext in
+                await delivery.sendValue(operation(executionContext))
+            }
+        )
+        actorQueue.taskStreamContinuation.yield(task)
+        self.init(priority: priority) {
+            await task.sempahore.wait()
+            return await delivery.getValue()
+        }
+    }
+
+    /// Runs the given throwing operation asynchronously
+    /// as part of a new top-level task on behalf of the current actor.
+    /// The operation will not execute until all prior tasks have
+    /// completed or suspended.
+    ///
+    /// Use this function when creating asynchronous work
+    /// that operates on behalf of the synchronous function that calls it.
+    /// Like `Task.detached(priority:operation:)`,
+    /// this function creates a separate, top-level task.
+    /// Unlike `Task.detached(priority:operation:)`,
+    /// the task created by `Task.init(priority:operation:)`
+    /// inherits the priority and actor context of the caller,
+    /// so the operation is treated more like an asynchronous extension
+    /// to the synchronous operation.
+    ///
+    /// You need to keep a reference to the task
+    /// if you want to cancel it by calling the `Task.cancel()` method.
+    /// Discarding your reference to a detached task
+    /// doesn't implicitly cancel that task,
+    /// it only makes it impossible for you to explicitly cancel the task.
+    ///
+    /// - Parameters:
+    ///   - priority: The priority of the task.
+    ///     Pass `nil` to use the priority from `Task.currentPriority`.
+    ///   - actorQueue: The queue on which to enqueue the task.
+    ///   - operation: The operation to perform.
+    @discardableResult
+    public init<ActorType: Actor>(
+        priority: TaskPriority? = nil,
+        enqueuedOn actorQueue: ActorQueue<ActorType>,
+        operation: @escaping @Sendable (isolated ActorType) async throws -> Success
+    ) where Failure == any Error {
+        let delivery = Delivery<Success, Failure>()
+        let task = ActorQueue<ActorType>.ActorTask(
+            executionContext: actorQueue.executionContext,
+            task: { executionContext in
+                do {
+                    try await delivery.sendValue(operation(executionContext))
+                } catch {
+                    await delivery.sendFailure(error)
+                }
+            }
+        )
+
+        actorQueue.taskStreamContinuation.yield(task)
+        self.init(priority: priority) {
+            await task.sempahore.wait()
+            return try await delivery.getValue()
+        }
+    }
+
+    /// Runs the given nonthrowing operation asynchronously
+    /// as part of a new top-level task on behalf of the current actor.
+    /// The operation will not execute until all prior tasks have
+    /// completed or suspended.
+    ///
+    /// Use this function when creating asynchronous work
+    /// that operates on behalf of the synchronous function that calls it.
+    /// Like `Task.detached(priority:operation:)`,
+    /// this function creates a separate, top-level task.
+    /// Unlike `Task.detached(priority:operation:)`,
+    /// the task created by `Task.init(priority:operation:)`
+    /// inherits the priority and actor context of the caller,
+    /// so the operation is treated more like an asynchronous extension
+    /// to the synchronous operation.
+    ///
+    /// You need to keep a reference to the task
+    /// if you want to cancel it by calling the `Task.cancel()` method.
+    /// Discarding your reference to a detached task
+    /// doesn't implicitly cancel that task,
+    /// it only makes it impossible for you to explicitly cancel the task.
+    ///
+    /// - Parameters:
+    ///   - priority: The priority of the task.
+    ///     Pass `nil` to use the priority from `Task.currentPriority`.
+    ///   - actorQueue: The queue on which to enqueue the task.
+    ///   - operation: The operation to perform.
+    @discardableResult
+    public init(
+        priority: TaskPriority? = nil,
+        enqueuedOn actorQueue: ActorQueue<MainActor>,
+        operation: @MainActor @escaping () async -> Success
+    ) where Failure == Never {
+        let delivery = Delivery<Success, Failure>()
+        let task = ActorQueue<MainActor>.ActorTask(
+            executionContext: actorQueue.executionContext,
+            task: { executionContext in
+                await delivery.sendValue(operation())
+            }
+        )
+        actorQueue.taskStreamContinuation.yield(task)
+        self.init(priority: priority) {
+            await task.sempahore.wait()
+            return await delivery.getValue()
+        }
+    }
+
+    /// Runs the given throwing operation asynchronously
+    /// as part of a new top-level task on behalf of the current actor.
+    /// The operation will not execute until all prior tasks have
+    /// completed or suspended.
+    ///
+    /// Use this function when creating asynchronous work
+    /// that operates on behalf of the synchronous function that calls it.
+    /// Like `Task.detached(priority:operation:)`,
+    /// this function creates a separate, top-level task.
+    /// Unlike `Task.detached(priority:operation:)`,
+    /// the task created by `Task.init(priority:operation:)`
+    /// inherits the priority and actor context of the caller,
+    /// so the operation is treated more like an asynchronous extension
+    /// to the synchronous operation.
+    ///
+    /// You need to keep a reference to the task
+    /// if you want to cancel it by calling the `Task.cancel()` method.
+    /// Discarding your reference to a detached task
+    /// doesn't implicitly cancel that task,
+    /// it only makes it impossible for you to explicitly cancel the task.
+    ///
+    /// - Parameters:
+    ///   - priority: The priority of the task.
+    ///     Pass `nil` to use the priority from `Task.currentPriority`.
+    ///   - actorQueue: The queue on which to enqueue the task.
+    ///   - operation: The operation to perform.
+    @discardableResult
+    public init(
+        priority: TaskPriority? = nil,
+        enqueuedOn actorQueue: ActorQueue<MainActor>,
+        operation: @escaping @MainActor () async throws -> Success
+    ) where Failure == any Error {
+        let delivery = Delivery<Success, Failure>()
+        let task = ActorQueue<MainActor>.ActorTask(
+            executionContext: actorQueue.executionContext,
+            task: { executionContext in
+                do {
+                    try await delivery.sendValue(operation())
+                } catch {
+                    await delivery.sendFailure(error)
+                }
+            }
+        )
+
+        actorQueue.taskStreamContinuation.yield(task)
+        self.init(priority: priority) {
+            await task.sempahore.wait()
+            return try await delivery.getValue()
+        }
     }
 }
+
+extension MainActor {
+    /// A global instance of an `ActorQueue<MainActor>`.
+    public static var queue: ActorQueue<MainActor> {
+        mainActorQueue
+    }
+}
+
+private let mainActorQueue = {
+    let queue = ActorQueue<MainActor>()
+    queue.adoptExecutionContext(of: MainActor.shared)
+    return queue
+}()

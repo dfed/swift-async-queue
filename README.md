@@ -51,7 +51,7 @@ func testFIFOQueueOrdering() async {
     actor Counter {
         nonisolated
         func incrementAndAssertCountEquals(_ expectedCount: Int) {
-            queue.enqueue {
+            Task(enqueuedOn: queue) {
                 await self.increment()
                 let incrementedCount = await self.count
                 XCTAssertEqual(incrementedCount, expectedCount) // always succeeds
@@ -59,7 +59,7 @@ func testFIFOQueueOrdering() async {
         }
 
         func flushQueue() async {
-            await queue.enqueueAndWait { }
+            await Task(enqueuedOn: queue) {}.value
         }
 
         func increment() {
@@ -101,14 +101,14 @@ func testActorQueueOrdering() async {
 
         nonisolated
         func incrementAndAssertCountEquals(_ expectedCount: Int) {
-            queue.enqueue { myself in
+            await Task(enqueuedOn: queue) { myself in
                 myself.count += 1
                 XCTAssertEqual(expectedCount, myself.count) // always succeeds
             }
         }
 
         func flushQueue() async {
-            await queue.enqueueAndWait { _ in }
+            await Task(enqueuedOn: queue) {}.value
         }
 
         private var count = 0
@@ -137,7 +137,7 @@ func testMainActorQueueOrdering() async {
     final class Counter {
         nonisolated
         func incrementAndAssertCountEquals(_ expectedCount: Int) {
-            MainActorQueue.shared.enqueue {
+            Task(enqueuedOn: MainActor.queue) {
                 self.increment()
                 let incrementedCount = self.count
                 XCTAssertEqual(incrementedCount, expectedCount) // always succeeds
@@ -145,7 +145,7 @@ func testMainActorQueueOrdering() async {
         }
 
         func flushQueue() async {
-            await MainActorQueue.shared.enqueueAndWait { }
+            await Task(enqueuedOn: MainActor.queue) { }.value
         }
 
         func increment() {
@@ -181,7 +181,7 @@ To install swift-async-queue in your project with [Swift Package Manager](https:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/dfed/swift-async-queue", from: "0.6.0"),
+    .package(url: "https://github.com/dfed/swift-async-queue", from: "0.7.0"),
 ]
 ```
 
@@ -190,7 +190,7 @@ dependencies: [
 To install swift-async-queue in your project with [CocoaPods](http://cocoapods.org), add the following to your `Podfile`:
 
 ```
-pod 'AsyncQueue', '~> 0.6.0'
+pod 'AsyncQueue', '~> 0.7.0'
 ```
 
 ## Contributing
