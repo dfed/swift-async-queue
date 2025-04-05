@@ -89,12 +89,13 @@ extension Task {
     @discardableResult
     public init(
         priority: TaskPriority? = nil,
-        enqueuedOn fifoQueue: FIFOQueue,
-        operation: @Sendable @escaping @isolated(any) () async -> Success
+        on fifoQueue: FIFOQueue,
+        @_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async -> Success
     ) where Failure == Never {
         let delivery = Delivery<Success, Failure>()
+        let executeOnce = UnsafeClosureHolder(operation: operation)
         let task = FIFOQueue.FIFOTask {
-            await delivery.sendValue(operation())
+            await delivery.sendValue(executeOnce.operation())
         }
         fifoQueue.taskStreamContinuation.yield(task)
         self.init(priority: priority) {
@@ -132,13 +133,14 @@ extension Task {
     @discardableResult
     public init(
         priority: TaskPriority? = nil,
-        enqueuedOn actorQueue: FIFOQueue,
-        operation: @escaping @Sendable @isolated(any) () async throws -> Success
+        on actorQueue: FIFOQueue,
+        @_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async throws -> Success
     ) where Failure == any Error {
         let delivery = Delivery<Success, Failure>()
+        let executeOnce = UnsafeThrowingClosureHolder(operation: operation)
         let task = FIFOQueue.FIFOTask {
             do {
-                try await delivery.sendValue(operation())
+                try await delivery.sendValue(executeOnce.operation())
             } catch {
                 await delivery.sendFailure(error)
             }
@@ -180,7 +182,7 @@ extension Task {
     @discardableResult
     public init<ActorType: Actor>(
         priority: TaskPriority? = nil,
-        enqueuedOn fifoQueue: FIFOQueue,
+        on fifoQueue: FIFOQueue,
         isolatedTo isolatedActor: ActorType,
         operation: @Sendable @escaping (isolated ActorType) async -> Success
     ) where Failure == Never {
@@ -225,7 +227,7 @@ extension Task {
     @discardableResult
     public init<ActorType: Actor>(
         priority: TaskPriority? = nil,
-        enqueuedOn fifoQueue: FIFOQueue,
+        on fifoQueue: FIFOQueue,
         isolatedTo isolatedActor: ActorType,
         operation: @Sendable @escaping (isolated ActorType) async throws -> Success
     ) where Failure == any Error {
@@ -243,4 +245,20 @@ extension Task {
             return try await delivery.getValue()
         }
     }
+}
+
+private struct UnsafeClosureHolder<Success: Sendable>: @unchecked Sendable {
+    init(operation: sending @escaping @isolated(any) () async -> Success) {
+        self.operation = operation
+    }
+
+    let operation: @isolated(any) () async -> Success
+}
+
+private struct UnsafeThrowingClosureHolder<Success: Sendable>: @unchecked Sendable {
+    init(operation: sending @escaping @isolated(any) () async throws -> Success) {
+        self.operation = operation
+    }
+
+    let operation: @isolated(any) () async throws -> Success
 }

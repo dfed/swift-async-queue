@@ -51,7 +51,7 @@ func testFIFOQueueOrdering() async {
     actor Counter {
         nonisolated
         func incrementAndAssertCountEquals(_ expectedCount: Int) {
-            Task(enqueuedOn: queue) {
+            Task(on: queue) {
                 await self.increment()
                 let incrementedCount = await self.count
                 XCTAssertEqual(incrementedCount, expectedCount) // always succeeds
@@ -59,7 +59,7 @@ func testFIFOQueueOrdering() async {
         }
 
         func flushQueue() async {
-            await Task(enqueuedOn: queue) {}.value
+            await Task(on: queue) {}.value
         }
 
         func increment() {
@@ -101,14 +101,14 @@ func testActorQueueOrdering() async {
 
         nonisolated
         func incrementAndAssertCountEquals(_ expectedCount: Int) {
-            await Task(enqueuedOn: queue) { myself in
+            await Task(on: queue) { myself in
                 myself.count += 1
                 XCTAssertEqual(expectedCount, myself.count) // always succeeds
             }
         }
 
         func flushQueue() async {
-            await Task(enqueuedOn: queue) {}.value
+            await Task(on: queue) {}.value
         }
 
         private var count = 0
@@ -137,7 +137,7 @@ func testMainActorQueueOrdering() async {
     final class Counter {
         nonisolated
         func incrementAndAssertCountEquals(_ expectedCount: Int) {
-            Task(enqueuedOn: MainActor.queue) {
+            Task(on: MainActor.queue) {
                 self.increment()
                 let incrementedCount = self.count
                 XCTAssertEqual(incrementedCount, expectedCount) // always succeeds
@@ -145,7 +145,7 @@ func testMainActorQueueOrdering() async {
         }
 
         func flushQueue() async {
-            await Task(enqueuedOn: MainActor.queue) { }.value
+            await Task(on: MainActor.queue) { }.value
         }
 
         func increment() {

@@ -32,43 +32,55 @@ struct FIFOQueueTests {
     @Test func test_task_sendsEventsInOrder() async {
         let counter = Counter()
         for iteration in 1...1_000 {
-            Task(enqueuedOn: systemUnderTest) {
+            Task(on: systemUnderTest) {
                 await counter.incrementAndExpectCount(equals: iteration)
             }
         }
-        await Task(enqueuedOn: systemUnderTest) { /* Drain the queue */ }.value
+        await Task(on: systemUnderTest) { /* Drain the queue */ }.value
+    }
+
+    @MainActor
+    @Test func test_task_sendsEventsInOrderInLocalContext() async {
+        var count = 0
+        for iteration in 1...1_000 {
+            Task(on: systemUnderTest) {
+                count += 1
+                #expect(iteration == count)
+            }
+        }
+        await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
     @Test func test_taskIsolatedTo_sendsEventsInOrder() async {
         let counter = Counter()
         for iteration in 1...1_000 {
-            Task(enqueuedOn: systemUnderTest, isolatedTo: counter) { counter in
+            Task(on: systemUnderTest, isolatedTo: counter) { counter in
                 counter.incrementAndExpectCount(equals: iteration)
             }
         }
-        await Task(enqueuedOn: systemUnderTest) { /* Drain the queue */ }.value
+        await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
     @Test func test_throwingTask_sendsEventsInOrder() async {
         let counter = Counter()
         for iteration in 1...1_000 {
-            Task(enqueuedOn: systemUnderTest) {
+            Task(on: systemUnderTest) {
                 await counter.incrementAndExpectCount(equals: iteration)
                 try doWork()
             }
         }
-        await Task(enqueuedOn: systemUnderTest) { /* Drain the queue */ }.value
+        await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
     @Test func test_throwingTaskIsolatedTo_sendsEventsInOrder() async {
         let counter = Counter()
         for iteration in 1...1_000 {
-            Task(enqueuedOn: systemUnderTest, isolatedTo: counter) { counter in
+            Task(on: systemUnderTest, isolatedTo: counter) { counter in
                 counter.incrementAndExpectCount(equals: iteration)
                 try doWork()
             }
         }
-        await Task(enqueuedOn: systemUnderTest) { /* Drain the queue */ }.value
+        await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
     @Test func test_task_interleavedWithTaskIsolatedTo_andThrowing_sendsEventsInOrder() async {
@@ -76,35 +88,35 @@ struct FIFOQueueTests {
         for iteration in 1...1_000 {
             let mod = iteration % 4
             if mod == 0 {
-                Task(enqueuedOn: systemUnderTest) {
+                Task(on: systemUnderTest) {
                     await counter.incrementAndExpectCount(equals: iteration)
                 }
             } else if mod == 1 {
-                Task(enqueuedOn: systemUnderTest, isolatedTo: counter) { counter in
+                Task(on: systemUnderTest, isolatedTo: counter) { counter in
                     counter.incrementAndExpectCount(equals: iteration)
                 }
             } else if mod == 2 {
-                Task(enqueuedOn: systemUnderTest) {
+                Task(on: systemUnderTest) {
                     await counter.incrementAndExpectCount(equals: iteration)
                     try doWork()
                 }
             } else {
-                Task(enqueuedOn: systemUnderTest, isolatedTo: counter) { counter in
+                Task(on: systemUnderTest, isolatedTo: counter) { counter in
                     counter.incrementAndExpectCount(equals: iteration)
                     try doWork()
                 }
             }
         }
-        await Task(enqueuedOn: systemUnderTest) { /* Drain the queue */ }.value
+        await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
     @Test func test_task_executesAsyncBlocksAtomically() async {
         let semaphore = Semaphore()
         for _ in 1...1_000 {
-            Task(enqueuedOn: systemUnderTest) {
+            Task(on: systemUnderTest) {
                 let isWaiting = await semaphore.isWaiting
                 // This test will fail occasionally if we aren't executing atomically.
-                // You can prove this to yourself by deleting `enqueuedOn: systemUnderTest` above.
+                // You can prove this to yourself by deleting `on: systemUnderTest` above.
                 #expect(!isWaiting)
                 // Signal the semaphore before or after we wait – let the scheduler decide.
                 Task {
@@ -114,16 +126,16 @@ struct FIFOQueueTests {
                 await semaphore.wait()
             }
         }
-        await Task(enqueuedOn: systemUnderTest) { /* Drain the queue */ }.value
+        await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
     @Test func test_taskIsolatedTo_executesAsyncBlocksAtomically() async {
         let semaphore = Semaphore()
         for _ in 1...1_000 {
-            Task(enqueuedOn: systemUnderTest, isolatedTo: semaphore) { semaphore in
+            Task(on: systemUnderTest, isolatedTo: semaphore) { semaphore in
                 let isWaiting = semaphore.isWaiting
                 // This test will fail occasionally if we aren't executing atomically.
-                // You can prove this to yourself by deleting `enqueuedOn: systemUnderTest` above.
+                // You can prove this to yourself by deleting `on: systemUnderTest` above.
                 #expect(!isWaiting)
                 // Signal the semaphore before or after we wait – let the scheduler decide.
                 Task {
@@ -133,16 +145,16 @@ struct FIFOQueueTests {
                 await semaphore.wait()
             }
         }
-        await Task(enqueuedOn: systemUnderTest) { /* Drain the queue */ }.value
+        await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
     @Test func test_throwingTask_executesAsyncBlocksAtomically() async {
         let semaphore = Semaphore()
         for _ in 1...1_000 {
-            Task(enqueuedOn: systemUnderTest) {
+            Task(on: systemUnderTest) {
                 let isWaiting = await semaphore.isWaiting
                 // This test will fail occasionally if we aren't executing atomically.
-                // You can prove this to yourself by deleting `enqueuedOn: systemUnderTest` above.
+                // You can prove this to yourself by deleting `on: systemUnderTest` above.
                 #expect(!isWaiting)
                 // Signal the semaphore before or after we wait – let the scheduler decide.
                 Task {
@@ -153,16 +165,16 @@ struct FIFOQueueTests {
                 try doWork()
             }
         }
-        await Task(enqueuedOn: systemUnderTest) { /* Drain the queue */ }.value
+        await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
     @Test func test_throwingTaskIsolatedTo_executesAsyncBlocksAtomically() async {
         let semaphore = Semaphore()
         for _ in 1...1_000 {
-            Task(enqueuedOn: systemUnderTest, isolatedTo: semaphore) { semaphore in
+            Task(on: systemUnderTest, isolatedTo: semaphore) { semaphore in
                 let isWaiting = semaphore.isWaiting
                 // This test will fail occasionally if we aren't executing atomically.
-                // You can prove this to yourself by deleting `enqueuedOn: systemUnderTest` above.
+                // You can prove this to yourself by deleting `on: systemUnderTest` above.
                 #expect(!isWaiting)
                 // Signal the semaphore before or after we wait – let the scheduler decide.
                 Task {
@@ -173,67 +185,67 @@ struct FIFOQueueTests {
                 try doWork()
             }
         }
-        await Task(enqueuedOn: systemUnderTest) { /* Drain the queue */ }.value
+        await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
     @Test func test_task_isNotReentrant() async {
         let counter = Counter()
-        Task(enqueuedOn: systemUnderTest) { [systemUnderTest] in
-            Task(enqueuedOn: systemUnderTest) {
+        Task(on: systemUnderTest) { [systemUnderTest] in
+            Task(on: systemUnderTest) {
                 await counter.incrementAndExpectCount(equals: 2)
             }
             await counter.incrementAndExpectCount(equals: 1)
-            Task(enqueuedOn: systemUnderTest) {
+            Task(on: systemUnderTest) {
                 await counter.incrementAndExpectCount(equals: 3)
             }
         }
-        await Task(enqueuedOn: systemUnderTest) { /* Drain the queue */ }.value
+        await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
     @Test func test_taskIsolatedTo_isNotReentrant() async {
         let counter = Counter()
-        Task(enqueuedOn: systemUnderTest, isolatedTo: counter) { [systemUnderTest] counter in
-            Task(enqueuedOn: systemUnderTest, isolatedTo: counter) { counter in
+        Task(on: systemUnderTest, isolatedTo: counter) { [systemUnderTest] counter in
+            Task(on: systemUnderTest, isolatedTo: counter) { counter in
                 counter.incrementAndExpectCount(equals: 2)
             }
             counter.incrementAndExpectCount(equals: 1)
-            Task(enqueuedOn: systemUnderTest, isolatedTo: counter) { counter in
+            Task(on: systemUnderTest, isolatedTo: counter) { counter in
                 counter.incrementAndExpectCount(equals: 3)
             }
         }
-        await Task(enqueuedOn: systemUnderTest) { /* Drain the queue */ }.value
+        await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
     @Test func test_throwingTask_isNotReentrant() async {
         let counter = Counter()
-        Task(enqueuedOn: systemUnderTest) { [systemUnderTest] in
-            Task(enqueuedOn: systemUnderTest) {
+        Task(on: systemUnderTest) { [systemUnderTest] in
+            Task(on: systemUnderTest) {
                 await counter.incrementAndExpectCount(equals: 2)
                 try doWork()
             }
             await counter.incrementAndExpectCount(equals: 1)
-            Task(enqueuedOn: systemUnderTest) {
+            Task(on: systemUnderTest) {
                 await counter.incrementAndExpectCount(equals: 3)
                 try doWork()
             }
         }
-        await Task(enqueuedOn: systemUnderTest) { /* Drain the queue */ }.value
+        await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
     @Test func test_throwingTaskIsolatedTo_isNotReentrant() async throws {
         let counter = Counter()
-        Task(enqueuedOn: systemUnderTest, isolatedTo: counter) { [systemUnderTest] counter in
-            Task(enqueuedOn: systemUnderTest, isolatedTo: counter) { counter in
+        Task(on: systemUnderTest, isolatedTo: counter) { [systemUnderTest] counter in
+            Task(on: systemUnderTest, isolatedTo: counter) { counter in
                 counter.incrementAndExpectCount(equals: 2)
                 try doWork()
             }
             counter.incrementAndExpectCount(equals: 1)
-            Task(enqueuedOn: systemUnderTest, isolatedTo: counter) { counter in
+            Task(on: systemUnderTest, isolatedTo: counter) { counter in
                 counter.incrementAndExpectCount(equals: 3)
                 try doWork()
             }
         }
-        await Task(enqueuedOn: systemUnderTest) { /* Drain the queue */ }.value
+        await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
     @Test func test_task_executesAfterQueueIsDeallocated() async throws {
@@ -241,12 +253,12 @@ struct FIFOQueueTests {
         let counter = Counter()
         let expectation = Expectation()
         let semaphore = Semaphore()
-        Task(enqueuedOn: try #require(systemUnderTest)) {
+        Task(on: try #require(systemUnderTest)) {
             // Make the queue wait.
             await semaphore.wait()
             await counter.incrementAndExpectCount(equals: 1)
         }
-        Task(enqueuedOn: try #require(systemUnderTest)) {
+        Task(on: try #require(systemUnderTest)) {
             // This async task should not execute until the semaphore is released.
             await counter.incrementAndExpectCount(equals: 2)
             expectation.fulfill()
@@ -266,12 +278,12 @@ struct FIFOQueueTests {
         let counter = Counter()
         let expectation = Expectation()
         let semaphore = Semaphore()
-        Task(enqueuedOn: try #require(systemUnderTest), isolatedTo: counter) { counter in
+        Task(on: try #require(systemUnderTest), isolatedTo: counter) { counter in
             // Make the queue wait.
             await semaphore.wait()
             counter.incrementAndExpectCount(equals: 1)
         }
-        Task(enqueuedOn: try #require(systemUnderTest), isolatedTo: counter) { counter in
+        Task(on: try #require(systemUnderTest), isolatedTo: counter) { counter in
             // This async task should not execute until the semaphore is released.
             counter.incrementAndExpectCount(equals: 2)
             expectation.fulfill()
@@ -291,13 +303,13 @@ struct FIFOQueueTests {
         let counter = Counter()
         let expectation = Expectation()
         let semaphore = Semaphore()
-        Task(enqueuedOn: try #require(systemUnderTest)) {
+        Task(on: try #require(systemUnderTest)) {
             // Make the queue wait.
             await semaphore.wait()
             await counter.incrementAndExpectCount(equals: 1)
             try doWork()
         }
-        Task(enqueuedOn: try #require(systemUnderTest)) {
+        Task(on: try #require(systemUnderTest)) {
             // This async task should not execute until the semaphore is released.
             await counter.incrementAndExpectCount(equals: 2)
             expectation.fulfill()
@@ -318,13 +330,13 @@ struct FIFOQueueTests {
         let counter = Counter()
         let expectation = Expectation()
         let semaphore = Semaphore()
-        Task(enqueuedOn: try #require(systemUnderTest), isolatedTo: counter) { counter in
+        Task(on: try #require(systemUnderTest), isolatedTo: counter) { counter in
             // Make the queue wait.
             await semaphore.wait()
             counter.incrementAndExpectCount(equals: 1)
             try doWork()
         }
-        Task(enqueuedOn: try #require(systemUnderTest), isolatedTo: counter) { counter in
+        Task(on: try #require(systemUnderTest), isolatedTo: counter) { counter in
             // This async task should not execute until the semaphore is released.
             counter.incrementAndExpectCount(equals: 2)
             expectation.fulfill()
@@ -342,13 +354,13 @@ struct FIFOQueueTests {
 
     @Test func test_task_canReturn() async {
         let expectedValue = UUID()
-        let returnedValue = await Task(enqueuedOn: systemUnderTest) { expectedValue }.value
+        let returnedValue = await Task(on: systemUnderTest) { expectedValue }.value
         #expect(expectedValue == returnedValue)
     }
 
     @Test func test_taskIsolatedTo_canReturn() async {
         let expectedValue = UUID()
-        let returnedValue = await Task(enqueuedOn: systemUnderTest, isolatedTo: Semaphore()) { _ in expectedValue }.value
+        let returnedValue = await Task(on: systemUnderTest, isolatedTo: Semaphore()) { _ in expectedValue }.value
         #expect(expectedValue == returnedValue)
     }
 
@@ -357,7 +369,7 @@ struct FIFOQueueTests {
         @Sendable func generateValue() throws -> UUID {
             expectedValue
         }
-        #expect(try await Task(enqueuedOn: systemUnderTest) { try generateValue() }.value == expectedValue)
+        #expect(try await Task(on: systemUnderTest) { try generateValue() }.value == expectedValue)
     }
 
     @Test func test_throwingTaskIsolatedTo_canReturn() async throws {
@@ -365,7 +377,7 @@ struct FIFOQueueTests {
         @Sendable func generateValue() throws -> UUID {
             expectedValue
         }
-        #expect(try await Task(enqueuedOn: systemUnderTest, isolatedTo: Semaphore()) { _ in try generateValue() }.value == expectedValue)
+        #expect(try await Task(on: systemUnderTest, isolatedTo: Semaphore()) { _ in try generateValue() }.value == expectedValue)
     }
 
     @Test func test_throwingTask_canThrow() async {
@@ -374,7 +386,7 @@ struct FIFOQueueTests {
         }
         let expectedError = TestError()
         do {
-            try await Task(enqueuedOn: systemUnderTest) { throw expectedError }.value
+            try await Task(on: systemUnderTest) { throw expectedError }.value
         } catch {
             #expect(error as? TestError == expectedError)
         }
@@ -386,7 +398,7 @@ struct FIFOQueueTests {
         }
         let expectedError = TestError()
         do {
-            try await Task(enqueuedOn: systemUnderTest, isolatedTo: Semaphore()) { _ in throw expectedError }.value
+            try await Task(on: systemUnderTest, isolatedTo: Semaphore()) { _ in throw expectedError }.value
         } catch {
             #expect(error as? TestError == expectedError)
         }

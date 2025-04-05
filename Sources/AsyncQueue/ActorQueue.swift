@@ -35,13 +35,13 @@
 ///
 ///     nonisolated
 ///     public func log(_ message: String) {
-///         Task(enqueuedOn: queue) { myself in
+///         Task(on: queue) { myself in
 ///             myself.logs.append(message)
 ///         }
 ///     }
 ///
 ///     public func retrieveLogs() async -> [String] {
-///         await Task(enqueuedOn: queue) { myself in myself.logs }.value
+///         await Task(on: queue) { myself in myself.logs }.value
 ///     }
 ///
 ///     private let queue = ActorQueue<LogStore>()
@@ -167,7 +167,7 @@ extension Task {
     @discardableResult
     public init<ActorType: Actor>(
         priority: TaskPriority? = nil,
-        enqueuedOn actorQueue: ActorQueue<ActorType>,
+        on actorQueue: ActorQueue<ActorType>,
         operation: @Sendable @escaping (isolated ActorType) async -> Success
     ) where Failure == Never {
         let delivery = Delivery<Success, Failure>()
@@ -213,7 +213,7 @@ extension Task {
     @discardableResult
     public init<ActorType: Actor>(
         priority: TaskPriority? = nil,
-        enqueuedOn actorQueue: ActorQueue<ActorType>,
+        on actorQueue: ActorQueue<ActorType>,
         operation: @escaping @Sendable (isolated ActorType) async throws -> Success
     ) where Failure == any Error {
         let delivery = Delivery<Success, Failure>()
@@ -264,7 +264,7 @@ extension Task {
     @discardableResult
     public init(
         priority: TaskPriority? = nil,
-        enqueuedOn actorQueue: ActorQueue<MainActor>,
+        on actorQueue: ActorQueue<MainActor>,
         operation: @MainActor @escaping () async -> Success
     ) where Failure == Never {
         let delivery = Delivery<Success, Failure>()
@@ -310,7 +310,7 @@ extension Task {
     @discardableResult
     public init(
         priority: TaskPriority? = nil,
-        enqueuedOn actorQueue: ActorQueue<MainActor>,
+        on actorQueue: ActorQueue<MainActor>,
         operation: @escaping @MainActor () async throws -> Success
     ) where Failure == any Error {
         let delivery = Delivery<Success, Failure>()

@@ -53,7 +53,7 @@ struct ActorQueueTests {
         systemUnderTest.adoptExecutionContext(of: counter!)
 
         let semaphore = Semaphore()
-        Task(enqueuedOn: systemUnderTest) { counter in
+        Task(on: systemUnderTest) { counter in
             await semaphore.wait()
         }
 
@@ -69,7 +69,7 @@ struct ActorQueueTests {
         systemUnderTest.adoptExecutionContext(of: counter!)
 
         let semaphore = Semaphore()
-        Task(enqueuedOn: systemUnderTest) { counter in
+        Task(on: systemUnderTest) { counter in
             await semaphore.wait()
             try doWork()
         }
@@ -81,7 +81,7 @@ struct ActorQueueTests {
 
     @Test func test_task_taskParameterIsAdoptedActor() async {
         let semaphore = Semaphore()
-        Task(enqueuedOn: systemUnderTest) { [storedCounter = counter] counter in
+        Task(on: systemUnderTest) { [storedCounter = counter] counter in
             #expect(counter === storedCounter)
             await semaphore.signal()
         }
@@ -91,7 +91,7 @@ struct ActorQueueTests {
 
     @Test func test_throwingTask_taskParameterIsAdoptedActor() async {
         let semaphore = Semaphore()
-        Task(enqueuedOn: systemUnderTest) { [storedCounter = counter] counter in
+        Task(on: systemUnderTest) { [storedCounter = counter] counter in
             #expect(counter === storedCounter)
             await semaphore.signal()
             try doWork()
@@ -102,7 +102,7 @@ struct ActorQueueTests {
 
     @Test func test_task_sendsEventsInOrder() async throws {
         let orderedTasks = (1...1_000).map { iteration in
-            Task(enqueuedOn: systemUnderTest) { counter in
+            Task(on: systemUnderTest) { counter in
                 counter.incrementAndExpectCount(equals: iteration)
             }
         }
@@ -112,7 +112,7 @@ struct ActorQueueTests {
 
     @Test func test_throwingTask_sendsEventsInOrder() async throws {
         let orderedTasks = (1...1_000).map { iteration in
-            Task(enqueuedOn: systemUnderTest) { counter in
+            Task(on: systemUnderTest) { counter in
                 counter.incrementAndExpectCount(equals: iteration)
                 try doWork()
             }
@@ -124,7 +124,7 @@ struct ActorQueueTests {
     @TestingQueue
     @Test func test_mainTask_sendsEventsInOrder() async throws {
         let orderedTasks = (1...1_000).map { iteration in
-            Task(enqueuedOn: MainActor.queue) {
+            Task(on: MainActor.queue) {
                 await counter.incrementAndExpectCount(equals: iteration)
             }
         }
@@ -135,7 +135,7 @@ struct ActorQueueTests {
     @TestingQueue
     @Test func test_mainThrowingTask_sendsEventsInOrder() async throws {
         let orderedTasks = (1...1_000).map { iteration in
-            Task(enqueuedOn: MainActor.queue) {
+            Task(on: MainActor.queue) {
                 await counter.incrementAndExpectCount(equals: iteration)
                 try doWork()
             }
@@ -149,16 +149,16 @@ struct ActorQueueTests {
         let semaphore = AsyncQueue.Semaphore()
         systemUnderTest.adoptExecutionContext(of: semaphore)
 
-        Task(enqueuedOn: systemUnderTest) { semaphore in
+        Task(on: systemUnderTest) { semaphore in
             await semaphore.wait()
         }
-        Task(enqueuedOn: systemUnderTest) { semaphore in
+        Task(on: systemUnderTest) { semaphore in
             // Signal the semaphore from the actor queue.
             // If the actor queue were FIFO, this test would hang since this code would never execute:
             // we'd still be waiting for the prior `wait()` tasks to finish.
             semaphore.signal()
         }
-        await Task(enqueuedOn: systemUnderTest) { _ in /* Drain the queue */ }.value
+        await Task(on: systemUnderTest) { _ in /* Drain the queue */ }.value
     }
 
     @Test func test_throwingTask_startsExecutionOfNextTaskAfterSuspension() async {
@@ -166,23 +166,23 @@ struct ActorQueueTests {
         let semaphore = AsyncQueue.Semaphore()
         systemUnderTest.adoptExecutionContext(of: semaphore)
 
-        Task(enqueuedOn: systemUnderTest) { semaphore in
+        Task(on: systemUnderTest) { semaphore in
             await semaphore.wait()
             try doWork()
         }
-        Task(enqueuedOn: systemUnderTest) { semaphore in
+        Task(on: systemUnderTest) { semaphore in
             // Signal the semaphore from the actor queue.
             // If the actor queue were FIFO, this test would hang since this code would never execute:
             // we'd still be waiting for the prior `wait()` tasks to finish.
             semaphore.signal()
             try doWork()
         }
-        await Task(enqueuedOn: systemUnderTest) { _ in /* Drain the queue */ }.value
+        await Task(on: systemUnderTest) { _ in /* Drain the queue */ }.value
     }
 
     @Test func test_task_allowsReentrancy() async {
-        await Task(enqueuedOn: systemUnderTest) { [systemUnderTest] counter in
-            await Task(enqueuedOn: systemUnderTest) { counter in
+        await Task(on: systemUnderTest) { [systemUnderTest] counter in
+            await Task(on: systemUnderTest) { counter in
                 counter.incrementAndExpectCount(equals: 1)
             }.value
             counter.incrementAndExpectCount(equals: 2)
@@ -190,9 +190,9 @@ struct ActorQueueTests {
     }
 
     @Test func test_throwingTask_allowsReentrancy() async throws {
-        try await Task(enqueuedOn: systemUnderTest) { [systemUnderTest] counter in
+        try await Task(on: systemUnderTest) { [systemUnderTest] counter in
             try doWork()
-            try await Task(enqueuedOn: systemUnderTest) { counter in
+            try await Task(on: systemUnderTest) { counter in
                 try doWork()
                 counter.incrementAndExpectCount(equals: 1)
             }.value
@@ -203,8 +203,8 @@ struct ActorQueueTests {
 
     @TestingQueue
     @Test func test_mainTask_allowsReentrancy() async {
-        await Task(enqueuedOn: MainActor.queue) { [counter] in
-            await Task(enqueuedOn: MainActor.queue) {
+        await Task(on: MainActor.queue) { [counter] in
+            await Task(on: MainActor.queue) {
                 await counter.incrementAndExpectCount(equals: 1)
             }.value
             await counter.incrementAndExpectCount(equals: 2)
@@ -213,9 +213,9 @@ struct ActorQueueTests {
 
     @TestingQueue
     @Test func test_mainThrowingTask_allowsReentrancy() async throws {
-        try await Task(enqueuedOn: MainActor.queue) { [counter] in
+        try await Task(on: MainActor.queue) { [counter] in
             try doWork()
-            try await Task(enqueuedOn: MainActor.queue) {
+            try await Task(on: MainActor.queue) {
                 try doWork()
                 await counter.incrementAndExpectCount(equals: 1)
             }.value
@@ -230,7 +230,7 @@ struct ActorQueueTests {
 
         let expectation = Expectation()
         let semaphore = AsyncQueue.Semaphore()
-        Task(enqueuedOn: try #require(systemUnderTest)) { counter in
+        Task(on: try #require(systemUnderTest)) { counter in
             // Make the task wait.
             await semaphore.wait()
             counter.incrementAndExpectCount(equals: 1)
@@ -251,7 +251,7 @@ struct ActorQueueTests {
 
         let expectation = Expectation()
         let semaphore = AsyncQueue.Semaphore()
-        Task(enqueuedOn: try #require(systemUnderTest)) { counter in
+        Task(on: try #require(systemUnderTest)) { counter in
             try doWork()
 
             // Make the task wait.
@@ -270,7 +270,7 @@ struct ActorQueueTests {
 
     @Test func test_task_canReturn() async {
         let expectedValue = UUID()
-        let returnedValue = await Task(enqueuedOn: systemUnderTest) { _ in expectedValue }.value
+        let returnedValue = await Task(on: systemUnderTest) { _ in expectedValue }.value
         #expect(expectedValue == returnedValue)
     }
 
@@ -279,7 +279,7 @@ struct ActorQueueTests {
         @Sendable func generateValue() throws -> UUID {
             expectedValue
         }
-        #expect(try await Task(enqueuedOn: systemUnderTest) { _ in try generateValue() }.value == expectedValue)
+        #expect(try await Task(on: systemUnderTest) { _ in try generateValue() }.value == expectedValue)
     }
 
     @Test func test_throwingTask_canThrow() async {
@@ -288,7 +288,7 @@ struct ActorQueueTests {
         }
         let expectedError = TestError()
         do {
-            try await Task(enqueuedOn: systemUnderTest) { _ in throw expectedError }.value
+            try await Task(on: systemUnderTest) { _ in throw expectedError }.value
         } catch {
             #expect(error as? TestError == expectedError)
         }
@@ -300,7 +300,7 @@ struct ActorQueueTests {
         }
         let expectedError = TestError()
         do {
-            try await Task(enqueuedOn: MainActor.queue) { throw expectedError }.value
+            try await Task(on: MainActor.queue) { throw expectedError }.value
         } catch {
             #expect(error as? TestError == expectedError)
         }
