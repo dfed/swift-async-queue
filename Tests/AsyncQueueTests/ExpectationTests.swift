@@ -26,7 +26,8 @@ struct ExpectationTests {
 
     // MARK: Behavior Tests
 
-    @Test func test_fulfill_triggersExpectation() async {
+    @Test
+    func fulfill_triggersExpectation() async {
         await confirmation { confirmation in
             let systemUnderTest = Expectation(
                 expectedCount: 1,
@@ -39,7 +40,8 @@ struct ExpectationTests {
         }
     }
 
-    @Test func test_fulfill_triggersExpectationOnceWhenCalledTwiceAndExpectedCountIsTwo() async {
+    @Test
+    func fulfill_triggersExpectationOnceWhenCalledTwiceAndExpectedCountIsTwo() async {
         await confirmation { confirmation in
             let systemUnderTest = Expectation(
                 expectedCount: 2,
@@ -53,7 +55,8 @@ struct ExpectationTests {
         }
     }
 
-    @Test func test_fulfill_triggersExpectationWhenExpectedCountIsZero() async {
+    @Test
+    func fulfill_triggersExpectationWhenExpectedCountIsZero() async {
         await confirmation { confirmation in
             let systemUnderTest = Expectation(
                 expectedCount: 0,
@@ -66,13 +69,15 @@ struct ExpectationTests {
         }
     }
 
-    @Test func test_fulfillment_doesNotWaitIfAlreadyFulfilled() async {
+    @Test
+    func fulfillment_doesNotWaitIfAlreadyFulfilled() async {
         let systemUnderTest = Expectation(expectedCount: 0)
         await systemUnderTest.fulfillment(withinSeconds: 30)
     }
 
     @MainActor // Global actor ensures Task ordering.
-    @Test func test_fulfillment_waitsForFulfillment() async {
+    @Test
+    func fulfillment_waitsForFulfillment() async {
         let systemUnderTest = Expectation(expectedCount: 1)
         var hasFulfilled = false
         let wait = Task {
@@ -86,7 +91,8 @@ struct ExpectationTests {
         await wait.value
     }
 
-    @Test func test_fulfillment_triggersFalseExpectationWhenItTimesOut() async {
+    @Test
+    func fulfillment_triggersFalseExpectationWhenItTimesOut() async {
         await confirmation { confirmation in
             let systemUnderTest = Expectation(
                 expectedCount: 1,

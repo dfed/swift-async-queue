@@ -29,7 +29,8 @@ struct FIFOQueueTests {
 
     // MARK: Behavior Tests
 
-    @Test func test_task_sendsEventsInOrder() async {
+    @Test
+    func task_sendsEventsInOrder() async {
         let counter = Counter()
         for iteration in 1...1_000 {
             Task(on: systemUnderTest) {
@@ -40,7 +41,8 @@ struct FIFOQueueTests {
     }
 
     @MainActor
-    @Test func test_task_sendsEventsInOrderInLocalContext() async {
+    @Test
+    func task_sendsEventsInOrderInLocalContext() async {
         var count = 0
         for iteration in 1...1_000 {
             Task(on: systemUnderTest) {
@@ -51,7 +53,8 @@ struct FIFOQueueTests {
         await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
-    @Test func test_taskIsolatedTo_sendsEventsInOrder() async {
+    @Test
+    func taskIsolatedTo_sendsEventsInOrder() async {
         let counter = Counter()
         for iteration in 1...1_000 {
             Task(on: systemUnderTest, isolatedTo: counter) { counter in
@@ -61,7 +64,8 @@ struct FIFOQueueTests {
         await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
-    @Test func test_throwingTask_sendsEventsInOrder() async {
+    @Test
+    func throwingTask_sendsEventsInOrder() async {
         let counter = Counter()
         for iteration in 1...1_000 {
             Task(on: systemUnderTest) {
@@ -72,7 +76,8 @@ struct FIFOQueueTests {
         await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
-    @Test func test_throwingTaskIsolatedTo_sendsEventsInOrder() async {
+    @Test
+    func throwingTaskIsolatedTo_sendsEventsInOrder() async {
         let counter = Counter()
         for iteration in 1...1_000 {
             Task(on: systemUnderTest, isolatedTo: counter) { counter in
@@ -83,7 +88,8 @@ struct FIFOQueueTests {
         await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
-    @Test func test_task_interleavedWithTaskIsolatedTo_andThrowing_sendsEventsInOrder() async {
+    @Test
+    func task_interleavedWithTaskIsolatedTo_andThrowing_sendsEventsInOrder() async {
         let counter = Counter()
         for iteration in 1...1_000 {
             let mod = iteration % 4
@@ -110,7 +116,8 @@ struct FIFOQueueTests {
         await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
-    @Test func test_task_executesAsyncBlocksAtomically() async {
+    @Test
+    func task_executesAsyncBlocksAtomically() async {
         let semaphore = Semaphore()
         for _ in 1...1_000 {
             Task(on: systemUnderTest) {
@@ -129,7 +136,8 @@ struct FIFOQueueTests {
         await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
-    @Test func test_taskIsolatedTo_executesAsyncBlocksAtomically() async {
+    @Test
+    func taskIsolatedTo_executesAsyncBlocksAtomically() async {
         let semaphore = Semaphore()
         for _ in 1...1_000 {
             Task(on: systemUnderTest, isolatedTo: semaphore) { semaphore in
@@ -148,7 +156,8 @@ struct FIFOQueueTests {
         await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
-    @Test func test_throwingTask_executesAsyncBlocksAtomically() async {
+    @Test
+    func throwingTask_executesAsyncBlocksAtomically() async {
         let semaphore = Semaphore()
         for _ in 1...1_000 {
             Task(on: systemUnderTest) {
@@ -168,7 +177,8 @@ struct FIFOQueueTests {
         await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
-    @Test func test_throwingTaskIsolatedTo_executesAsyncBlocksAtomically() async {
+    @Test
+    func throwingTaskIsolatedTo_executesAsyncBlocksAtomically() async {
         let semaphore = Semaphore()
         for _ in 1...1_000 {
             Task(on: systemUnderTest, isolatedTo: semaphore) { semaphore in
@@ -188,7 +198,8 @@ struct FIFOQueueTests {
         await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
-    @Test func test_task_isNotReentrant() async {
+    @Test
+    func task_isNotReentrant() async {
         let counter = Counter()
         Task(on: systemUnderTest) { [systemUnderTest] in
             Task(on: systemUnderTest) {
@@ -202,7 +213,8 @@ struct FIFOQueueTests {
         await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
-    @Test func test_taskIsolatedTo_isNotReentrant() async {
+    @Test
+    func taskIsolatedTo_isNotReentrant() async {
         let counter = Counter()
         Task(on: systemUnderTest, isolatedTo: counter) { [systemUnderTest] counter in
             Task(on: systemUnderTest, isolatedTo: counter) { counter in
@@ -216,7 +228,8 @@ struct FIFOQueueTests {
         await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
-    @Test func test_throwingTask_isNotReentrant() async {
+    @Test
+    func throwingTask_isNotReentrant() async {
         let counter = Counter()
         Task(on: systemUnderTest) { [systemUnderTest] in
             Task(on: systemUnderTest) {
@@ -232,7 +245,8 @@ struct FIFOQueueTests {
         await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
-    @Test func test_throwingTaskIsolatedTo_isNotReentrant() async throws {
+    @Test
+    func throwingTaskIsolatedTo_isNotReentrant() async throws {
         let counter = Counter()
         Task(on: systemUnderTest, isolatedTo: counter) { [systemUnderTest] counter in
             Task(on: systemUnderTest, isolatedTo: counter) { counter in
@@ -248,7 +262,8 @@ struct FIFOQueueTests {
         await Task(on: systemUnderTest) { /* Drain the queue */ }.value
     }
 
-    @Test func test_task_executesAfterQueueIsDeallocated() async throws {
+    @Test
+    func task_executesAfterQueueIsDeallocated() async throws {
         var systemUnderTest: FIFOQueue? = FIFOQueue()
         let counter = Counter()
         let expectation = Expectation()
@@ -273,7 +288,8 @@ struct FIFOQueueTests {
         await expectation.fulfillment(withinSeconds: 30)
     }
 
-    @Test func test_taskIsolatedTo_executesAfterQueueIsDeallocated() async throws {
+    @Test
+    func taskIsolatedTo_executesAfterQueueIsDeallocated() async throws {
         var systemUnderTest: FIFOQueue? = FIFOQueue()
         let counter = Counter()
         let expectation = Expectation()
@@ -298,7 +314,8 @@ struct FIFOQueueTests {
         await expectation.fulfillment(withinSeconds: 30)
     }
 
-    @Test func test_throwingTask_executesAfterQueueIsDeallocated() async throws {
+    @Test
+    func throwingTask_executesAfterQueueIsDeallocated() async throws {
         var systemUnderTest: FIFOQueue? = FIFOQueue()
         let counter = Counter()
         let expectation = Expectation()
@@ -325,7 +342,8 @@ struct FIFOQueueTests {
         await expectation.fulfillment(withinSeconds: 30)
     }
 
-    @Test func test_throwingTaskIsolatedTo_executesAfterQueueIsDeallocated() async throws {
+    @Test
+    func throwingTaskIsolatedTo_executesAfterQueueIsDeallocated() async throws {
         var systemUnderTest: FIFOQueue? = FIFOQueue()
         let counter = Counter()
         let expectation = Expectation()
@@ -352,19 +370,22 @@ struct FIFOQueueTests {
         await expectation.fulfillment(withinSeconds: 30)
     }
 
-    @Test func test_task_canReturn() async {
+    @Test
+    func task_canReturn() async {
         let expectedValue = UUID()
         let returnedValue = await Task(on: systemUnderTest) { expectedValue }.value
         #expect(expectedValue == returnedValue)
     }
 
-    @Test func test_taskIsolatedTo_canReturn() async {
+    @Test
+    func taskIsolatedTo_canReturn() async {
         let expectedValue = UUID()
         let returnedValue = await Task(on: systemUnderTest, isolatedTo: Semaphore()) { _ in expectedValue }.value
         #expect(expectedValue == returnedValue)
     }
 
-    @Test func test_throwingTask_canReturn() async throws {
+    @Test
+    func throwingTask_canReturn() async throws {
         let expectedValue = UUID()
         @Sendable func generateValue() throws -> UUID {
             expectedValue
@@ -372,7 +393,8 @@ struct FIFOQueueTests {
         #expect(try await Task(on: systemUnderTest) { try generateValue() }.value == expectedValue)
     }
 
-    @Test func test_throwingTaskIsolatedTo_canReturn() async throws {
+    @Test
+    func throwingTaskIsolatedTo_canReturn() async throws {
         let expectedValue = UUID()
         @Sendable func generateValue() throws -> UUID {
             expectedValue
@@ -380,7 +402,8 @@ struct FIFOQueueTests {
         #expect(try await Task(on: systemUnderTest, isolatedTo: Semaphore()) { _ in try generateValue() }.value == expectedValue)
     }
 
-    @Test func test_throwingTask_canThrow() async {
+    @Test
+    func throwingTask_canThrow() async {
         struct TestError: Error, Equatable {
             private let identifier = UUID()
         }
@@ -392,7 +415,8 @@ struct FIFOQueueTests {
         }
     }
 
-    @Test func test_throwingTaskIsolatedTo_canThrow() async {
+    @Test
+    func throwingTaskIsolatedTo_canThrow() async {
         struct TestError: Error, Equatable {
             private let identifier = UUID()
         }

@@ -37,7 +37,8 @@ struct ActorQueueTests {
 
     // MARK: Behavior Tests
 
-    @Test func test_adoptExecutionContext_doesNotRetainActor() {
+    @Test
+    func adoptExecutionContext_doesNotRetainActor() {
         let systemUnderTest = ActorQueue<Counter>()
         var counter: Counter? = Counter()
         weak var weakCounter = counter
@@ -46,7 +47,8 @@ struct ActorQueueTests {
         #expect(weakCounter == nil)
     }
 
-    @Test func test_task_retainsAdoptedActorUntilEnqueuedTasksComplete() async {
+    @Test
+    func task_retainsAdoptedActorUntilEnqueuedTasksComplete() async {
         let systemUnderTest = ActorQueue<Counter>()
         var counter: Counter? = Counter()
         weak var weakCounter = counter
@@ -62,7 +64,8 @@ struct ActorQueueTests {
         await semaphore.signal()
     }
 
-    @Test func test_throwingTask_retainsAdoptedActorUntilEnqueuedTasksComplete() async {
+    @Test
+    func throwingTask_retainsAdoptedActorUntilEnqueuedTasksComplete() async {
         let systemUnderTest = ActorQueue<Counter>()
         var counter: Counter? = Counter()
         weak var weakCounter = counter
@@ -79,7 +82,8 @@ struct ActorQueueTests {
         await semaphore.signal()
     }
 
-    @Test func test_task_taskParameterIsAdoptedActor() async {
+    @Test
+    func task_taskParameterIsAdoptedActor() async {
         let semaphore = Semaphore()
         Task(on: systemUnderTest) { [storedCounter = counter] counter in
             #expect(counter === storedCounter)
@@ -89,7 +93,8 @@ struct ActorQueueTests {
         await semaphore.wait()
     }
 
-    @Test func test_throwingTask_taskParameterIsAdoptedActor() async {
+    @Test
+    func throwingTask_taskParameterIsAdoptedActor() async {
         let semaphore = Semaphore()
         Task(on: systemUnderTest) { [storedCounter = counter] counter in
             #expect(counter === storedCounter)
@@ -100,7 +105,8 @@ struct ActorQueueTests {
         await semaphore.wait()
     }
 
-    @Test func test_task_sendsEventsInOrder() async throws {
+    @Test
+    func task_sendsEventsInOrder() async throws {
         var lastTask: Task<Void, Never>?
         (1...1_000).forEach { iteration in
             lastTask = Task(on: systemUnderTest) { counter in
@@ -111,7 +117,8 @@ struct ActorQueueTests {
         try await #require(lastTask).value
     }
 
-    @Test func test_throwingTask_sendsEventsInOrder() async throws {
+    @Test
+    func throwingTask_sendsEventsInOrder() async throws {
         var lastTask: Task<Void, Error>?
         (1...1_000).forEach { iteration in
             lastTask = Task(on: systemUnderTest) { counter in
@@ -124,7 +131,8 @@ struct ActorQueueTests {
     }
 
     @TestingQueue
-    @Test func test_mainTask_sendsEventsInOrder() async throws {
+    @Test
+    func mainTask_sendsEventsInOrder() async throws {
         var lastTask: Task<Void, Error>?
         (1...1_000).forEach { iteration in
             lastTask = Task(on: MainActor.queue) {
@@ -136,7 +144,8 @@ struct ActorQueueTests {
     }
 
     @TestingQueue
-    @Test func test_mainThrowingTask_sendsEventsInOrder() async throws {
+    @Test
+    func mainThrowingTask_sendsEventsInOrder() async throws {
         var lastTask: Task<Void, Error>?
         (1...1_000).forEach { iteration in
             lastTask = Task(on: MainActor.queue) {
@@ -148,7 +157,8 @@ struct ActorQueueTests {
         try await #require(lastTask).value
     }
 
-    @Test func test_task_startsExecutionOfNextTaskAfterSuspension() async {
+    @Test
+    func task_startsExecutionOfNextTaskAfterSuspension() async {
         let systemUnderTest = ActorQueue<AsyncQueue.Semaphore>()
         let semaphore = AsyncQueue.Semaphore()
         systemUnderTest.adoptExecutionContext(of: semaphore)
@@ -165,7 +175,8 @@ struct ActorQueueTests {
         (_, _) = await (firstTask.value, secondTask.value)
     }
 
-    @Test func test_throwingTask_startsExecutionOfNextTaskAfterSuspension() async throws {
+    @Test
+    func throwingTask_startsExecutionOfNextTaskAfterSuspension() async throws {
         let systemUnderTest = ActorQueue<AsyncQueue.Semaphore>()
         let semaphore = AsyncQueue.Semaphore()
         systemUnderTest.adoptExecutionContext(of: semaphore)
@@ -184,7 +195,8 @@ struct ActorQueueTests {
         (_, _) = try await (firstTask.value, secondTask.value)
     }
 
-    @Test func test_task_allowsReentrancy() async {
+    @Test
+    func task_allowsReentrancy() async {
         await Task(on: systemUnderTest) { [systemUnderTest] counter in
             await Task(on: systemUnderTest) { counter in
                 counter.incrementAndExpectCount(equals: 1)
@@ -193,7 +205,8 @@ struct ActorQueueTests {
         }.value
     }
 
-    @Test func test_throwingTask_allowsReentrancy() async throws {
+    @Test
+    func throwingTask_allowsReentrancy() async throws {
         try await Task(on: systemUnderTest) { [systemUnderTest] counter in
             try doWork()
             try await Task(on: systemUnderTest) { counter in
@@ -206,7 +219,8 @@ struct ActorQueueTests {
     }
 
     @TestingQueue
-    @Test func test_mainTask_allowsReentrancy() async {
+    @Test
+    func mainTask_allowsReentrancy() async {
         await Task(on: MainActor.queue) { [counter] in
             await Task(on: MainActor.queue) {
                 await counter.incrementAndExpectCount(equals: 1)
@@ -216,7 +230,8 @@ struct ActorQueueTests {
     }
 
     @TestingQueue
-    @Test func test_mainThrowingTask_allowsReentrancy() async throws {
+    @Test
+    func mainThrowingTask_allowsReentrancy() async throws {
         try await Task(on: MainActor.queue) { [counter] in
             try doWork()
             try await Task(on: MainActor.queue) {
@@ -228,7 +243,8 @@ struct ActorQueueTests {
         }.value
     }
 
-    @Test func test_task_executesEnqueuedTasksAfterQueueIsDeallocated() async throws {
+    @Test
+    func task_executesEnqueuedTasksAfterQueueIsDeallocated() async throws {
         var systemUnderTest: ActorQueue<Counter>? = ActorQueue()
         systemUnderTest?.adoptExecutionContext(of: counter)
 
@@ -249,7 +265,8 @@ struct ActorQueueTests {
         await expectation.fulfillment(withinSeconds: 30)
     }
 
-    @Test func test_throwingTask_executesEnqueuedTasksAfterQueueIsDeallocated() async throws {
+    @Test
+    func throwingTask_executesEnqueuedTasksAfterQueueIsDeallocated() async throws {
         var systemUnderTest: ActorQueue<Counter>? = ActorQueue()
         systemUnderTest?.adoptExecutionContext(of: counter)
 
@@ -272,13 +289,15 @@ struct ActorQueueTests {
         await expectation.fulfillment(withinSeconds: 30)
     }
 
-    @Test func test_task_canReturn() async {
+    @Test
+    func task_canReturn() async {
         let expectedValue = UUID()
         let returnedValue = await Task(on: systemUnderTest) { _ in expectedValue }.value
         #expect(expectedValue == returnedValue)
     }
 
-    @Test func test_throwingTask_canReturn() async throws {
+    @Test
+    func throwingTask_canReturn() async throws {
         let expectedValue = UUID()
         @Sendable func generateValue() throws -> UUID {
             expectedValue
@@ -286,7 +305,8 @@ struct ActorQueueTests {
         #expect(try await Task(on: systemUnderTest) { _ in try generateValue() }.value == expectedValue)
     }
 
-    @Test func test_throwingTask_canThrow() async {
+    @Test
+    func throwingTask_canThrow() async {
         struct TestError: Error, Equatable {
             private let identifier = UUID()
         }
@@ -298,7 +318,8 @@ struct ActorQueueTests {
         }
     }
 
-    @Test func test_mainThrowingTask_canThrow() async {
+    @Test
+    func mainThrowingTask_canThrow() async {
         struct TestError: Error, Equatable {
             private let identifier = UUID()
         }
@@ -310,7 +331,8 @@ struct ActorQueueTests {
         }
     }
 
-    @Test func test_mainTask_executesOnMainActor() async {
+    @Test
+    func mainTask_executesOnMainActor() async {
         @MainActor
         func executesOnMainActor() {}
         await Task(on: MainActor.queue) {
@@ -318,7 +340,8 @@ struct ActorQueueTests {
         }.value
     }
 
-    @Test func test_mainThrowingTask_executesOnMainActor() async throws {
+    @Test
+    func mainThrowingTask_executesOnMainActor() async throws {
         @MainActor
         func executesOnMainActor() throws {}
         try await Task(on: MainActor.queue) {

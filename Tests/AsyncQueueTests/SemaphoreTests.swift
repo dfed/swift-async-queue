@@ -37,7 +37,8 @@ final class SemaphoreTests {
 
     // MARK: Behavior Tests
 
-    @Test func test_wait_suspendsUntilEqualNumberOfSignalCalls() async {
+    @Test
+    func wait_suspendsUntilEqualNumberOfSignalCalls() async {
         /*
          This test is tricky to pull off!
          Our requirements:
@@ -97,7 +98,8 @@ final class SemaphoreTests {
         }
     }
 
-    @Test func test_wait_doesNotSuspendIfSignalCalledFirst() async {
+    @Test
+    func wait_doesNotSuspendIfSignalCalledFirst() async {
         await systemUnderTest.signal()
         let didSuspend = await systemUnderTest.wait()
         #expect(!didSuspend)
