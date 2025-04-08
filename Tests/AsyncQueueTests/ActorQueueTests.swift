@@ -101,47 +101,51 @@ struct ActorQueueTests {
     }
 
     @Test func test_task_sendsEventsInOrder() async throws {
-        let orderedTasks = (1...1_000).map { iteration in
-            Task(on: systemUnderTest) { counter in
+        var lastTask: Task<Void, Never>?
+        (1...1_000).forEach { iteration in
+            lastTask = Task(on: systemUnderTest) { counter in
                 counter.incrementAndExpectCount(equals: iteration)
             }
         }
         // Drain the queue
-        try #require(await orderedTasks.reversed().last?.value)
+        try await #require(lastTask).value
     }
 
     @Test func test_throwingTask_sendsEventsInOrder() async throws {
-        let orderedTasks = (1...1_000).map { iteration in
-            Task(on: systemUnderTest) { counter in
+        var lastTask: Task<Void, Error>?
+        (1...1_000).forEach { iteration in
+            lastTask = Task(on: systemUnderTest) { counter in
                 counter.incrementAndExpectCount(equals: iteration)
                 try doWork()
             }
         }
         // Drain the queue
-        try #require(await orderedTasks.reversed().last?.value)
+        try await #require(lastTask).value
     }
 
     @TestingQueue
     @Test func test_mainTask_sendsEventsInOrder() async throws {
-        let orderedTasks = (1...1_000).map { iteration in
-            Task(on: MainActor.queue) {
+        var lastTask: Task<Void, Error>?
+        (1...1_000).forEach { iteration in
+            lastTask = Task(on: MainActor.queue) {
                 await counter.incrementAndExpectCount(equals: iteration)
             }
         }
         // Drain the queue
-        try #require(await orderedTasks.reversed().last?.value)
+        try await #require(lastTask).value
     }
 
     @TestingQueue
     @Test func test_mainThrowingTask_sendsEventsInOrder() async throws {
-        let orderedTasks = (1...1_000).map { iteration in
-            Task(on: MainActor.queue) {
+        var lastTask: Task<Void, Error>?
+        (1...1_000).forEach { iteration in
+            lastTask = Task(on: MainActor.queue) {
                 await counter.incrementAndExpectCount(equals: iteration)
                 try doWork()
             }
         }
         // Drain the queue
-        try #require(await orderedTasks.reversed().last?.value)
+        try await #require(lastTask).value
     }
 
     @Test func test_task_startsExecutionOfNextTaskAfterSuspension() async {
@@ -149,35 +153,35 @@ struct ActorQueueTests {
         let semaphore = AsyncQueue.Semaphore()
         systemUnderTest.adoptExecutionContext(of: semaphore)
 
-        Task(on: systemUnderTest) { semaphore in
+        let firstTask = Task(on: systemUnderTest) { semaphore in
             await semaphore.wait()
         }
-        Task(on: systemUnderTest) { semaphore in
+        let secondTask = Task(on: systemUnderTest) { semaphore in
             // Signal the semaphore from the actor queue.
             // If the actor queue were FIFO, this test would hang since this code would never execute:
             // we'd still be waiting for the prior `wait()` tasks to finish.
             semaphore.signal()
         }
-        await Task(on: systemUnderTest) { _ in /* Drain the queue */ }.value
+        (_, _) = await (firstTask.value, secondTask.value)
     }
 
-    @Test func test_throwingTask_startsExecutionOfNextTaskAfterSuspension() async {
+    @Test func test_throwingTask_startsExecutionOfNextTaskAfterSuspension() async throws {
         let systemUnderTest = ActorQueue<AsyncQueue.Semaphore>()
         let semaphore = AsyncQueue.Semaphore()
         systemUnderTest.adoptExecutionContext(of: semaphore)
 
-        Task(on: systemUnderTest) { semaphore in
+        let firstTask = Task(on: systemUnderTest) { semaphore in
             await semaphore.wait()
             try doWork()
         }
-        Task(on: systemUnderTest) { semaphore in
+        let secondTask = Task(on: systemUnderTest) { semaphore in
             // Signal the semaphore from the actor queue.
             // If the actor queue were FIFO, this test would hang since this code would never execute:
             // we'd still be waiting for the prior `wait()` tasks to finish.
             semaphore.signal()
             try doWork()
         }
-        await Task(on: systemUnderTest) { _ in /* Drain the queue */ }.value
+        (_, _) = try await (firstTask.value, secondTask.value)
     }
 
     @Test func test_task_allowsReentrancy() async {
