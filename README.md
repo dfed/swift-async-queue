@@ -127,7 +127,7 @@ func testActorQueueOrdering() async {
 
 ### Sending ordered asynchronous tasks to the `@MainActor` from a nonisolated context
 
-Use `MainActor.queue` to send ordered asynchronous tasks to the `@MainActor`’s isolated context from nonisolated or synchronous contexts. Tasks sent to this queue type are guaranteed to begin executing in the order in which they are enqueued. Like an `ActorQueue`, execution order is guaranteed only until the first [suspension point](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID639) within the enqueued task. A `MainActor.queue` executes tasks within its adopted actor’s isolated context, resulting in `MainActor.queue` task execution having the same properties as a `@MainActor`'s' code execution: code between suspension points is executed atomically, and tasks sent to a single `MainActor.queue` can await results from the queue without deadlocking.
+Use `MainActor.queue` to send ordered asynchronous tasks to the `@MainActor`’s isolated context from nonisolated or synchronous contexts. Tasks sent to this queue type are guaranteed to begin executing in the order in which they are enqueued. The `MainActor.queue` an `ActorQueue` that runs within the `@MainActor` global context: execution order is guaranteed only until the first [suspension point](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID639) within the enqueued task. Similarly, code between suspension points is executed atomically, and tasks sent to the `MainActor.queue` can await results from the queue without deadlocking.
 
 A `MainActor.queue` can easily execute asynchronous tasks from a nonisolated context in FIFO order:
 ```swift
