@@ -310,6 +310,22 @@ struct ActorQueueTests {
         }
     }
 
+    @Test func test_mainTask_executesOnMainActor() async {
+        @MainActor
+        func executesOnMainActor() {}
+        await Task(on: MainActor.queue) {
+            executesOnMainActor()
+        }.value
+    }
+
+    @Test func test_mainThrowingTask_executesOnMainActor() async throws {
+        @MainActor
+        func executesOnMainActor() throws {}
+        try await Task(on: MainActor.queue) {
+            try executesOnMainActor()
+        }.value
+    }
+
     // MARK: Private
 
     private let systemUnderTest: ActorQueue<Counter>
