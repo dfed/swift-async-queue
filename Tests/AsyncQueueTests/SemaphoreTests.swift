@@ -22,6 +22,8 @@
 
 import Testing
 
+@testable import AsyncQueue
+
 final class SemaphoreTests {
 
     // MARK: Initialization
@@ -45,7 +47,7 @@ final class SemaphoreTests {
          4. We must utilize a single actor's isolated context to avoid accidental interleaving when suspending to communicate across actor contexts.
 
          In order to ensure that we are executing the `wait()` calls before we call `signal()` _without awaiting a `wait()` call_,
-         we utilize the Semaphore's ordered execution context to enqueue ordered `Task`s similar to how an ActorQueue works.
+         we utilize the AsyncQueue.Semaphore's ordered execution context to enqueue ordered `Task`s similar to how an ActorQueue works.
          */
 
         let iterationCount = 1_000
@@ -103,16 +105,16 @@ final class SemaphoreTests {
 
     // MARK: Private
 
-    private let systemUnderTest = Semaphore()
+    private let systemUnderTest = AsyncQueue.Semaphore()
 }
 
-// MARK: - Semaphore Extension
+// MARK: - AsyncQueue.Semaphore Extension
 
-private extension Semaphore {
+private extension AsyncQueue.Semaphore {
     /// Enqueues an asynchronous task and increments a counter after the task completes.
     /// This method suspends the caller until the asynchronous task has begun, ensuring ordered execution of enqueued tasks.
     /// - Parameter task: A unit of work that returns work to execute after the task completes and the count is incremented.
-    func enqueueAndCount(using counter: UnsafeCounter, _ task: @escaping @Sendable (isolated Semaphore) async -> (@Sendable (isolated Semaphore) -> Void)?) async {
+    func enqueueAndCount(using counter: UnsafeCounter, _ task: @escaping @Sendable (isolated AsyncQueue.Semaphore) async -> (@Sendable (isolated AsyncQueue.Semaphore) -> Void)?) async {
         // Await the start of the soon-to-be-enqueued `Task` with a continuation.
         await withCheckedContinuation { continuation in
             // Re-enter the semaphore's ordered context but don't wait for the result.
@@ -126,7 +128,7 @@ private extension Semaphore {
         }
     }
 
-    func execute(_ task: @Sendable (isolated Semaphore) async throws -> Void) async rethrows {
+    func execute(_ task: @Sendable (isolated AsyncQueue.Semaphore) async throws -> Void) async rethrows {
         try await task(self)
     }
 }

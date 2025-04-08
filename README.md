@@ -51,7 +51,7 @@ func testFIFOQueueOrdering() async {
     actor Counter {
         nonisolated
         func incrementAndAssertCountEquals(_ expectedCount: Int) {
-            queue.enqueue {
+            Task(on: queue) {
                 await self.increment()
                 let incrementedCount = await self.count
                 XCTAssertEqual(incrementedCount, expectedCount) // always succeeds
@@ -59,7 +59,7 @@ func testFIFOQueueOrdering() async {
         }
 
         func flushQueue() async {
-            await queue.enqueueAndWait { }
+            await Task(on: queue) {}.value
         }
 
         func increment() {
@@ -101,14 +101,14 @@ func testActorQueueOrdering() async {
 
         nonisolated
         func incrementAndAssertCountEquals(_ expectedCount: Int) {
-            queue.enqueue { myself in
+            await Task(on: queue) { myself in
                 myself.count += 1
                 XCTAssertEqual(expectedCount, myself.count) // always succeeds
             }
         }
 
         func flushQueue() async {
-            await queue.enqueueAndWait { _ in }
+            await Task(on: queue) {}.value
         }
 
         private var count = 0
@@ -127,9 +127,9 @@ func testActorQueueOrdering() async {
 
 ### Sending ordered asynchronous tasks to the `@MainActor` from a nonisolated context
 
-Use a `MainActorQueue` to send ordered asynchronous tasks to the `@MainActor`’s isolated context from nonisolated or synchronous contexts. Tasks sent to this queue type are guaranteed to begin executing in the order in which they are enqueued. Like an `ActorQueue`, execution order is guaranteed only until the first [suspension point](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID639) within the enqueued task. A `MainActorQueue` executes tasks within its adopted actor’s isolated context, resulting in `MainActorQueue` task execution having the same properties as a `@MainActor`'s' code execution: code between suspension points is executed atomically, and tasks sent to a single `MainActorQueue` can await results from the queue without deadlocking.
+Use `MainActor.queue` to send ordered asynchronous tasks to the `@MainActor`’s isolated context from nonisolated or synchronous contexts. Tasks sent to this queue type are guaranteed to begin executing in the order in which they are enqueued. Like an `ActorQueue`, execution order is guaranteed only until the first [suspension point](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID639) within the enqueued task. A `MainActor.queue` executes tasks within its adopted actor’s isolated context, resulting in `MainActor.queue` task execution having the same properties as a `@MainActor`'s' code execution: code between suspension points is executed atomically, and tasks sent to a single `MainActor.queue` can await results from the queue without deadlocking.
 
-A `MainActorQueue` can easily execute asynchronous tasks from a nonisolated context in FIFO order:
+A `MainActor.queue` can easily execute asynchronous tasks from a nonisolated context in FIFO order:
 ```swift
 @MainActor
 func testMainActorQueueOrdering() async {
@@ -137,7 +137,7 @@ func testMainActorQueueOrdering() async {
     final class Counter {
         nonisolated
         func incrementAndAssertCountEquals(_ expectedCount: Int) {
-            MainActorQueue.shared.enqueue {
+            Task(on: MainActor.queue) {
                 self.increment()
                 let incrementedCount = self.count
                 XCTAssertEqual(incrementedCount, expectedCount) // always succeeds
@@ -145,7 +145,7 @@ func testMainActorQueueOrdering() async {
         }
 
         func flushQueue() async {
-            await MainActorQueue.shared.enqueueAndWait { }
+            await Task(on: MainActor.queue) { }.value
         }
 
         func increment() {
@@ -181,7 +181,7 @@ To install swift-async-queue in your project with [Swift Package Manager](https:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/dfed/swift-async-queue", from: "0.6.0"),
+    .package(url: "https://github.com/dfed/swift-async-queue", from: "0.7.0"),
 ]
 ```
 
@@ -190,7 +190,7 @@ dependencies: [
 To install swift-async-queue in your project with [CocoaPods](http://cocoapods.org), add the following to your `Podfile`:
 
 ```
-pod 'AsyncQueue', '~> 0.6.0'
+pod 'AsyncQueue', '~> 0.7.0'
 ```
 
 ## Contributing
