@@ -211,7 +211,7 @@ extension Task {
     /// it only makes it impossible for you to explicitly cancel the task.
     ///
     /// - Parameters:
-    ///   - priority: The priority of the task.
+    ///   - priority: The priority of the queue.
     ///     Pass `nil` to use the priority from `Task.currentPriority`.
     ///   - fifoQueue: The queue on which to enqueue the task.
     ///   - isolatedActor: The actor to which the operation is isolated.

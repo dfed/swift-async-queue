@@ -56,8 +56,6 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
     // MARK: Initialization
 
     /// Instantiates an actor queue.
-    ///   - priority: The priority of the task.
-    ///     Pass `nil` to use the priority from `Task.currentPriority`.
     public init() {
         let (taskStream, taskStreamContinuation) = AsyncStream<ActorTask>.makeStream()
         self.taskStreamContinuation = taskStreamContinuation
