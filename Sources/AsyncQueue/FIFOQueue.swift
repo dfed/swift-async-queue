@@ -82,13 +82,10 @@ extension Task {
     /// it only makes it impossible for you to explicitly cancel the task.
     ///
     /// - Parameters:
-    ///   - priority: The priority of the task.
-    ///     Pass `nil` to use the priority from `Task.currentPriority`.
     ///   - fifoQueue: The queue on which to enqueue the task.
     ///   - operation: The operation to perform.
     @discardableResult
     public init(
-        priority: TaskPriority? = nil,
         on fifoQueue: FIFOQueue,
         @_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async -> Success
     ) where Failure == Never {
@@ -98,7 +95,7 @@ extension Task {
             await delivery.sendValue(executeOnce.operation())
         }
         fifoQueue.taskStreamContinuation.yield(task)
-        self.init(priority: priority) {
+        self.init {
             await task.sempahore.wait()
             return await delivery.getValue()
         }
@@ -126,13 +123,10 @@ extension Task {
     /// it only makes it impossible for you to explicitly cancel the task.
     ///
     /// - Parameters:
-    ///   - priority: The priority of the task.
-    ///     Pass `nil` to use the priority from `Task.currentPriority`.
     ///   - fifoQueue: The queue on which to enqueue the task.
     ///   - operation: The operation to perform.
     @discardableResult
     public init(
-        priority: TaskPriority? = nil,
         on actorQueue: FIFOQueue,
         @_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async throws -> Success
     ) where Failure == any Error {
@@ -146,7 +140,7 @@ extension Task {
             }
         }
         actorQueue.taskStreamContinuation.yield(task)
-        self.init(priority: priority) {
+        self.init {
             await task.sempahore.wait()
             return try await delivery.getValue()
         }
@@ -174,8 +168,6 @@ extension Task {
     /// it only makes it impossible for you to explicitly cancel the task.
     ///
     /// - Parameters:
-    ///   - priority: The priority of the task.
-    ///     Pass `nil` to use the priority from `Task.currentPriority`.
     ///   - fifoQueue: The queue on which to enqueue the task.
     ///   - isolatedActor: The actor to which the operation is isolated.
     ///   - operation: The operation to perform.
@@ -191,7 +183,7 @@ extension Task {
             await delivery.sendValue(operation(isolatedActor))
         }
         fifoQueue.taskStreamContinuation.yield(task)
-        self.init(priority: priority) {
+        self.init {
             await task.sempahore.wait()
             return await delivery.getValue()
         }

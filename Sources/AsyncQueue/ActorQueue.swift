@@ -56,17 +56,20 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
     // MARK: Initialization
 
     /// Instantiates an actor queue.
+    ///   - priority: The priority of the task.
+    ///     Pass `nil` to use the priority from `Task.currentPriority`.
     public init() {
         let (taskStream, taskStreamContinuation) = AsyncStream<ActorTask>.makeStream()
         self.taskStreamContinuation = taskStreamContinuation
 
         func beginExecuting(
             _ operation: sending @escaping (isolated ActorType) async -> Void,
-            in context: isolated ActorType
+            in context: isolated ActorType,
+            priority: TaskPriority?
         ) {
             // In Swift 6, a `Task` enqueued from an actor begins executing immediately on that actor.
             // Since we're running on our actor's context already, we can just dispatch a Task to get first-enqueued-first-start task execution.
-            Task {
+            Task(priority: priority) {
                 await operation(context)
             }
         }
@@ -78,7 +81,8 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
                 // Await switching to the ActorType context.
                 await beginExecuting(
                     actorTask.task,
-                    in: actorTask.executionContext
+                    in: actorTask.executionContext,
+                    priority: actorTask.priority
                 )
                 await actorTask.sempahore.signal()
             }
@@ -116,13 +120,19 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
     }
 
     fileprivate struct ActorTask: Sendable {
-        init(executionContext: ActorType, task: @escaping @Sendable (isolated ActorType) async -> Void) {
+        init(
+            executionContext: ActorType,
+            priority: TaskPriority?,
+            task: @escaping @Sendable (isolated ActorType) async -> Void
+        ) {
             self.executionContext = executionContext
+            self.priority = priority
             self.task = task
         }
         
         let executionContext: ActorType
         let sempahore = Semaphore()
+        let priority: TaskPriority?
         let task: @Sendable (isolated ActorType) async -> Void
     }
 
@@ -160,8 +170,6 @@ extension Task {
     /// it only makes it impossible for you to explicitly cancel the task.
     ///
     /// - Parameters:
-    ///   - priority: The priority of the task.
-    ///     Pass `nil` to use the priority from `Task.currentPriority`.
     ///   - actorQueue: The queue on which to enqueue the task.
     ///   - operation: The operation to perform.
     @discardableResult
@@ -173,6 +181,7 @@ extension Task {
         let delivery = Delivery<Success, Failure>()
         let task = ActorQueue<ActorType>.ActorTask(
             executionContext: actorQueue.executionContext,
+            priority: priority,
             task: { executionContext in
                 await delivery.sendValue(operation(executionContext))
             }
@@ -219,6 +228,7 @@ extension Task {
         let delivery = Delivery<Success, Failure>()
         let task = ActorQueue<ActorType>.ActorTask(
             executionContext: actorQueue.executionContext,
+            priority: priority,
             task: { executionContext in
                 do {
                     try await delivery.sendValue(operation(executionContext))
@@ -270,6 +280,7 @@ extension Task {
         let delivery = Delivery<Success, Failure>()
         let task = ActorQueue<MainActor>.ActorTask(
             executionContext: actorQueue.executionContext,
+            priority: priority,
             task: { executionContext in
                 await delivery.sendValue(operation())
             }
@@ -316,6 +327,7 @@ extension Task {
         let delivery = Delivery<Success, Failure>()
         let task = ActorQueue<MainActor>.ActorTask(
             executionContext: actorQueue.executionContext,
+            priority: priority,
             task: { executionContext in
                 do {
                     try await delivery.sendValue(operation())
