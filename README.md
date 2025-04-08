@@ -12,12 +12,13 @@ A library of queues that enable sending ordered tasks from nonisolated to asynch
 Tasks sent from a nonisolated context to an asynchronous context in Swift Concurrency are inherently unordered. Consider the following test:
 
 ```swift
-func testActorTaskOrdering() async {
+@Test
+func actorTaskOrdering() async {
     actor Counter {
         func incrementAndAssertCountEquals(_ expectedCount: Int) {
             count += 1
             let incrementedCount = count
-            XCTAssertEqual(incrementedCount, expectedCount) // often fails
+            #expect(incrementedCount == expectedCount) // often fails
         }
 
         private var count = 0
@@ -47,36 +48,35 @@ Use a `FIFOQueue` to execute asynchronous tasks enqueued from a nonisolated cont
 
 A `FIFOQueue` can easily execute asynchronous tasks from a nonisolated context in FIFO order:
 ```swift
-func testFIFOQueueOrdering() async {
+@Test
+func fIFOQueueOrdering() async {
     actor Counter {
         nonisolated
-        func incrementAndAssertCountEquals(_ expectedCount: Int) {
+        func incrementAndAssertCountEquals(_ expectedCount: Int) -> Task<Void, Never> {
             Task(on: queue) {
                 await self.increment()
                 let incrementedCount = await self.count
-                XCTAssertEqual(incrementedCount, expectedCount) // always succeeds
+                #expect(incrementedCount == expectedCount) // always succeeds
             }
-        }
-
-        func flushQueue() async {
-            await Task(on: queue) {}.value
         }
 
         func increment() {
             count += 1
         }
 
-        var count = 0
-
+        private var count = 0
         private let queue = FIFOQueue()
     }
 
     let counter = Counter()
+    var tasks = [Task<Void, Never>]()
     for iteration in 1...100 {
-        counter.incrementAndAssertCountEquals(iteration)
+        tasks.append(counter.incrementAndAssertCountEquals(iteration))
     }
     // Wait for all enqueued tasks to finish.
-    await counter.flushQueue()
+    for task in tasks {
+        _ = await task.value
+    }
 }
 ```
 
@@ -92,7 +92,8 @@ An instance of an `ActorQueue` is designed to be utilized by a single `actor` in
 
 An `ActorQueue` can easily enqueue tasks that execute on an actor’s isolated context from a nonisolated context in order:
 ```swift
-func testActorQueueOrdering() async {
+@Test
+func actorQueueOrdering() async {
     actor Counter {
         init() {
             // Adopting the execution context in `init` satisfies requirement #2 above.
@@ -100,15 +101,11 @@ func testActorQueueOrdering() async {
         }
 
         nonisolated
-        func incrementAndAssertCountEquals(_ expectedCount: Int) {
-            await Task(on: queue) { myself in
+        func incrementAndAssertCountEquals(_ expectedCount: Int) -> Task<Void, Never> {
+            Task(on: queue) { myself in
                 myself.count += 1
-                XCTAssertEqual(expectedCount, myself.count) // always succeeds
+                #expect(expectedCount == myself.count) // always succeeds
             }
-        }
-
-        func flushQueue() async {
-            await Task(on: queue) {}.value
         }
 
         private var count = 0
@@ -117,11 +114,14 @@ func testActorQueueOrdering() async {
     }
 
     let counter = Counter()
+    var tasks = [Task<Void, Never>]()
     for iteration in 1...100 {
-        counter.incrementAndAssertCountEquals(iteration)
+        tasks.append(counter.incrementAndAssertCountEquals(iteration))
     }
     // Wait for all enqueued tasks to finish.
-    await counter.flushQueue()
+    for task in tasks {
+        _ = await task.value
+    }
 }
 ```
 
@@ -132,35 +132,35 @@ Use `MainActor.queue` to send ordered asynchronous tasks to the `@MainActor`’s
 A `MainActor.queue` can easily execute asynchronous tasks from a nonisolated context in FIFO order:
 ```swift
 @MainActor
-func testMainActorQueueOrdering() async {
+@Test
+func mainActorQueueOrdering() async {
     @MainActor
     final class Counter {
         nonisolated
-        func incrementAndAssertCountEquals(_ expectedCount: Int) {
+        func incrementAndAssertCountEquals(_ expectedCount: Int) -> Task<Void, Never> {
             Task(on: MainActor.queue) {
                 self.increment()
                 let incrementedCount = self.count
-                XCTAssertEqual(incrementedCount, expectedCount) // always succeeds
+                #expect(incrementedCount == expectedCount) // always succeeds
             }
-        }
-
-        func flushQueue() async {
-            await Task(on: MainActor.queue) { }.value
         }
 
         func increment() {
             count += 1
         }
 
-        var count = 0
+        private var count = 0
     }
 
     let counter = Counter()
+    var tasks = [Task<Void, Never>]()
     for iteration in 1...100 {
-        counter.incrementAndAssertCountEquals(iteration)
+        tasks.append(counter.incrementAndAssertCountEquals(iteration))
     }
     // Wait for all enqueued tasks to finish.
-    await counter.flushQueue()
+    for task in tasks {
+        _ = await task.value
+    }
 }
 ```
 
