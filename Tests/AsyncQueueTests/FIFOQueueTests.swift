@@ -371,6 +371,56 @@ struct FIFOQueueTests {
     }
 
     @Test
+    func task_canBeCancelled() async {
+        let semaphore = Semaphore()
+        let task = Task(on: systemUnderTest) {
+            await semaphore.wait()
+            #expect(Task.isCancelled)
+        }
+        task.cancel()
+        await semaphore.signal()
+        await task.value
+    }
+
+    @Test
+    func taskIsolatedTo_canBeCancelled() async {
+        let semaphore = Semaphore()
+        let task = Task(on: systemUnderTest, isolatedTo: Semaphore()) { _ in
+            await semaphore.wait()
+            #expect(Task.isCancelled)
+        }
+        task.cancel()
+        await semaphore.signal()
+        await task.value
+    }
+
+    @Test
+    func throwingTask_canBeCancelled() async {
+        let semaphore = Semaphore()
+        let task = Task(on: systemUnderTest) {
+            await semaphore.wait()
+            #expect(Task.isCancelled)
+            throw CancellationError() // This is wonky, but we can't `try` if we want 100% code coverage.
+        }
+        task.cancel()
+        await semaphore.signal()
+        try? await task.value
+    }
+
+    @Test
+    func throwingTaskIsolatedTo_canBeCancelled() async {
+        let semaphore = Semaphore()
+        let task = Task(on: systemUnderTest, isolatedTo: Semaphore()) { _ in
+            await semaphore.wait()
+            #expect(Task.isCancelled)
+            throw CancellationError() // This is wonky, but we can't `try` if we want 100% code coverage.
+        }
+        task.cancel()
+        await semaphore.signal()
+        try? await task.value
+    }
+
+    @Test
     func task_canReturn() async {
         let expectedValue = UUID()
         let returnedValue = await Task(on: systemUnderTest) { expectedValue }.value

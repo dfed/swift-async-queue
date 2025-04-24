@@ -36,7 +36,6 @@ public final class FIFOQueue: Sendable {
         Task.detached(priority: priority) {
             for await fifoTask in taskStream {
                 await fifoTask.task()
-                await fifoTask.sempahore.signal()
             }
         }
     }
@@ -51,8 +50,7 @@ public final class FIFOQueue: Sendable {
         init(task: @escaping @Sendable () async -> Void) {
             self.task = task
         }
-        
-        let sempahore = Semaphore()
+
         let task: @Sendable () async -> Void
     }
 
@@ -90,14 +88,23 @@ extension Task {
         @_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async -> Success
     ) where Failure == Never {
         let delivery = Delivery<Success, Failure>()
+        let semaphore = Semaphore()
         let executeOnce = UnsafeClosureHolder(operation: operation)
         let task = FIFOQueue.FIFOTask {
-            await delivery.sendValue(executeOnce.operation())
+            await semaphore.wait()
+            await delivery.execute({ @Sendable delivery in
+                await delivery.sendValue(executeOnce.operation())
+            }, in: delivery).value
         }
         fifoQueue.taskStreamContinuation.yield(task)
         self.init {
-            await task.sempahore.wait()
-            return await delivery.getValue()
+            await withTaskCancellationHandler(
+                operation: {
+                    await semaphore.signal()
+                    return await delivery.getValue()
+                },
+                onCancel: delivery.cancel
+            )
         }
     }
 
@@ -127,22 +134,31 @@ extension Task {
     ///   - operation: The operation to perform.
     @discardableResult
     public init(
-        on actorQueue: FIFOQueue,
+        on fifoQueue: FIFOQueue,
         @_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async throws -> Success
     ) where Failure == any Error {
         let delivery = Delivery<Success, Failure>()
+        let semaphore = Semaphore()
         let executeOnce = UnsafeThrowingClosureHolder(operation: operation)
         let task = FIFOQueue.FIFOTask {
-            do {
-                try await delivery.sendValue(executeOnce.operation())
-            } catch {
-                await delivery.sendFailure(error)
-            }
+            await semaphore.wait()
+            await delivery.execute({ @Sendable delivery in
+                do {
+                    try await delivery.sendValue(executeOnce.operation())
+                } catch {
+                    delivery.sendFailure(error)
+                }
+            }, in: delivery).value
         }
-        actorQueue.taskStreamContinuation.yield(task)
+        fifoQueue.taskStreamContinuation.yield(task)
         self.init {
-            await task.sempahore.wait()
-            return try await delivery.getValue()
+            try await withTaskCancellationHandler(
+                operation: {
+                    await semaphore.signal()
+                    return try await delivery.getValue()
+                },
+                onCancel: delivery.cancel
+            )
         }
     }
 
@@ -179,13 +195,22 @@ extension Task {
         operation: @Sendable @escaping (isolated ActorType) async -> Success
     ) where Failure == Never {
         let delivery = Delivery<Success, Failure>()
+        let semaphore = Semaphore()
         let task = FIFOQueue.FIFOTask {
-            await delivery.sendValue(operation(isolatedActor))
+            await semaphore.wait()
+            await delivery.execute({ @Sendable isolatedActor in
+                await delivery.sendValue(operation(isolatedActor))
+            }, in: isolatedActor, priority: priority).value
         }
         fifoQueue.taskStreamContinuation.yield(task)
         self.init {
-            await task.sempahore.wait()
-            return await delivery.getValue()
+            await withTaskCancellationHandler(
+                operation: {
+                    await semaphore.signal()
+                    return await delivery.getValue()
+                },
+                onCancel: delivery.cancel
+            )
         }
     }
 
@@ -224,17 +249,26 @@ extension Task {
         operation: @Sendable @escaping (isolated ActorType) async throws -> Success
     ) where Failure == any Error {
         let delivery = Delivery<Success, Failure>()
+        let semaphore = Semaphore()
         let task = FIFOQueue.FIFOTask {
-            do {
-                try await delivery.sendValue(operation(isolatedActor))
-            } catch {
-                await delivery.sendFailure(error)
-            }
+            await semaphore.wait()
+            await delivery.execute({ @Sendable isolatedActor in
+                do {
+                    try await delivery.sendValue(operation(isolatedActor))
+                } catch {
+                    await delivery.sendFailure(error)
+                }
+            }, in: isolatedActor, priority: priority).value
         }
         fifoQueue.taskStreamContinuation.yield(task)
         self.init(priority: priority) {
-            await task.sempahore.wait()
-            return try await delivery.getValue()
+            try await withTaskCancellationHandler(
+                operation: {
+                    await semaphore.signal()
+                    return try await delivery.getValue()
+                },
+                onCancel: delivery.cancel
+            )
         }
     }
 }
