@@ -140,5 +140,4 @@ private struct Locked<State>: @unchecked Sendable {
     }
 }
 
-
 private let lockQueue = DispatchQueue(label: "LockedValue.lockQueue", target: DispatchQueue.global())
