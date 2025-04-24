@@ -130,7 +130,6 @@ struct ActorQueueTests {
         try await #require(lastTask).value
     }
 
-    @TestingQueue
     @Test
     func mainTask_sendsEventsInOrder() async throws {
         var lastTask: Task<Void, Error>?
@@ -143,7 +142,6 @@ struct ActorQueueTests {
         try await #require(lastTask).value
     }
 
-    @TestingQueue
     @Test
     func mainThrowingTask_sendsEventsInOrder() async throws {
         var lastTask: Task<Void, Error>?
@@ -218,7 +216,6 @@ struct ActorQueueTests {
         }.value
     }
 
-    @TestingQueue
     @Test
     func mainTask_allowsReentrancy() async {
         await Task(on: MainActor.queue) { [counter] in
@@ -229,7 +226,6 @@ struct ActorQueueTests {
         }.value
     }
 
-    @TestingQueue
     @Test
     func mainThrowingTask_allowsReentrancy() async throws {
         try await Task(on: MainActor.queue) { [counter] in
@@ -314,7 +310,6 @@ struct ActorQueueTests {
         try? await task.value
     }
 
-    @TestingQueue
     @Test
     func mainTask_canBeCancelled() async {
         let semaphore = Semaphore()
@@ -406,11 +401,4 @@ struct ActorQueueTests {
     private let counter: Counter
 
     @Sendable private func doWork() throws -> Void {}
-}
-
-/// A global actor that runs off of `main`, where tests may otherwise deadlock due to waiting for `main` from `main`.
-@globalActor
-private struct TestingQueue {
-    fileprivate actor Shared {}
-    fileprivate static let shared = Shared()
 }
