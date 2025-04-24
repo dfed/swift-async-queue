@@ -130,7 +130,6 @@ struct ActorQueueTests {
         try await #require(lastTask).value
     }
 
-    @TestingQueue
     @Test
     func mainTask_sendsEventsInOrder() async throws {
         var lastTask: Task<Void, Error>?
@@ -143,7 +142,6 @@ struct ActorQueueTests {
         try await #require(lastTask).value
     }
 
-    @TestingQueue
     @Test
     func mainThrowingTask_sendsEventsInOrder() async throws {
         var lastTask: Task<Void, Error>?
@@ -218,7 +216,6 @@ struct ActorQueueTests {
         }.value
     }
 
-    @TestingQueue
     @Test
     func mainTask_allowsReentrancy() async {
         await Task(on: MainActor.queue) { [counter] in
@@ -229,7 +226,6 @@ struct ActorQueueTests {
         }.value
     }
 
-    @TestingQueue
     @Test
     func mainThrowingTask_allowsReentrancy() async throws {
         try await Task(on: MainActor.queue) { [counter] in
@@ -287,6 +283,56 @@ struct ActorQueueTests {
         // Signal the semaphore to unlock the enqueued tasks.
         await semaphore.signal()
         await expectation.fulfillment(withinSeconds: 30)
+    }
+
+    @Test
+    func task_canBeCancelled() async {
+        let semaphore = Semaphore()
+        let task = Task(on: systemUnderTest) { _ in
+            await semaphore.wait()
+            #expect(Task.isCancelled)
+        }
+        task.cancel()
+        await semaphore.signal()
+        await task.value
+    }
+
+    @Test
+    func throwingTask_canBeCancelled() async {
+        let semaphore = Semaphore()
+        let task = Task(on: systemUnderTest) { _ in
+            await semaphore.wait()
+            #expect(Task.isCancelled)
+            throw CancellationError() // This is wonky, but we can't `try` if we want 100% code coverage.
+        }
+        task.cancel()
+        await semaphore.signal()
+        try? await task.value
+    }
+
+    @Test
+    func mainTask_canBeCancelled() async {
+        let semaphore = Semaphore()
+        let task = Task(on: MainActor.queue) { _ in
+            await semaphore.wait()
+            #expect(Task.isCancelled)
+        }
+        task.cancel()
+        await semaphore.signal()
+        await task.value
+    }
+
+    @Test
+    func mainThrowingTask_canBeCancelled() async {
+        let semaphore = Semaphore()
+        let task = Task(on: MainActor.queue) { _ in
+            await semaphore.wait()
+            #expect(Task.isCancelled)
+            throw CancellationError() // This is wonky, but we can't `try` if we want 100% code coverage.
+        }
+        task.cancel()
+        await semaphore.signal()
+        try? await task.value
     }
 
     @Test
@@ -355,11 +401,4 @@ struct ActorQueueTests {
     private let counter: Counter
 
     @Sendable private func doWork() throws -> Void {}
-}
-
-/// A global actor that runs off of `main`, where tests may otherwise deadlock due to waiting for `main` from `main`.
-@globalActor
-private struct TestingQueue {
-    fileprivate actor Shared {}
-    fileprivate static let shared = Shared()
 }
