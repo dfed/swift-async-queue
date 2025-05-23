@@ -23,25 +23,25 @@
 import Testing
 
 actor Counter {
-    func incrementAndExpectCount(
-        equals expectedCount: Int,
-        filePath: String = #filePath,
-        fileID: String = #fileID,
-        line: Int = #line,
-        column: Int = #column
-    ) {
-        increment()
-        #expect(expectedCount == count, sourceLocation: .init(
-            fileID: filePath,
-            filePath: filePath,
-            line: line,
-            column: column
-        ))
-    }
+	func incrementAndExpectCount(
+		equals expectedCount: Int,
+		filePath: String = #filePath,
+		fileID _: String = #fileID,
+		line: Int = #line,
+		column: Int = #column
+	) {
+		increment()
+		#expect(expectedCount == count, sourceLocation: .init(
+			fileID: filePath,
+			filePath: filePath,
+			line: line,
+			column: column
+		))
+	}
 
-    func increment() {
-        count += 1
-    }
+	func increment() {
+		count += 1
+	}
 
-    var count = 0
+	var count = 0
 }

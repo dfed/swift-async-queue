@@ -23,85 +23,84 @@
 import Testing
 
 struct ExpectationTests {
+	// MARK: Behavior Tests
 
-    // MARK: Behavior Tests
+	@Test
+	func fulfill_triggersExpectation() async {
+		await confirmation { confirmation in
+			let systemUnderTest = Expectation(
+				expectedCount: 1,
+				expect: { expectation, _, _ in
+					#expect(expectation)
+					confirmation()
+				}
+			)
+			await systemUnderTest.fulfill().value
+		}
+	}
 
-    @Test
-    func fulfill_triggersExpectation() async {
-        await confirmation { confirmation in
-            let systemUnderTest = Expectation(
-                expectedCount: 1,
-                expect: { expectation, _, _ in
-                    #expect(expectation)
-                    confirmation()
-                }
-            )
-            await systemUnderTest.fulfill().value
-        }
-    }
+	@Test
+	func fulfill_triggersExpectationOnceWhenCalledTwiceAndExpectedCountIsTwo() async {
+		await confirmation { confirmation in
+			let systemUnderTest = Expectation(
+				expectedCount: 2,
+				expect: { expectation, _, _ in
+					#expect(expectation)
+					confirmation()
+				}
+			)
+			await systemUnderTest.fulfill().value
+			await systemUnderTest.fulfill().value
+		}
+	}
 
-    @Test
-    func fulfill_triggersExpectationOnceWhenCalledTwiceAndExpectedCountIsTwo() async {
-        await confirmation { confirmation in
-            let systemUnderTest = Expectation(
-                expectedCount: 2,
-                expect: { expectation, _, _ in
-                    #expect(expectation)
-                    confirmation()
-                }
-            )
-            await systemUnderTest.fulfill().value
-            await systemUnderTest.fulfill().value
-        }
-    }
+	@Test
+	func fulfill_triggersExpectationWhenExpectedCountIsZero() async {
+		await confirmation { confirmation in
+			let systemUnderTest = Expectation(
+				expectedCount: 0,
+				expect: { expectation, _, _ in
+					#expect(!expectation)
+					confirmation()
+				}
+			)
+			await systemUnderTest.fulfill().value
+		}
+	}
 
-    @Test
-    func fulfill_triggersExpectationWhenExpectedCountIsZero() async {
-        await confirmation { confirmation in
-            let systemUnderTest = Expectation(
-                expectedCount: 0,
-                expect: { expectation, _, _ in
-                    #expect(!expectation)
-                    confirmation()
-                }
-            )
-            await systemUnderTest.fulfill().value
-        }
-    }
+	@Test
+	func fulfillment_doesNotWaitIfAlreadyFulfilled() async {
+		let systemUnderTest = Expectation(expectedCount: 0)
+		await systemUnderTest.fulfillment(withinSeconds: 30)
+	}
 
-    @Test
-    func fulfillment_doesNotWaitIfAlreadyFulfilled() async {
-        let systemUnderTest = Expectation(expectedCount: 0)
-        await systemUnderTest.fulfillment(withinSeconds: 30)
-    }
+	@MainActor // Global actor ensures Task ordering.
+	@Test
+	func fulfillment_waitsForFulfillment() async {
+		let systemUnderTest = Expectation(expectedCount: 1)
+		var hasFulfilled = false
+		let wait = Task {
+			await systemUnderTest.fulfillment(withinSeconds: 30)
+			#expect(hasFulfilled)
+		}
+		Task {
+			systemUnderTest.fulfill()
+			hasFulfilled = true
+		}
+		await wait.value
+	}
 
-    @MainActor // Global actor ensures Task ordering.
-    @Test
-    func fulfillment_waitsForFulfillment() async {
-        let systemUnderTest = Expectation(expectedCount: 1)
-        var hasFulfilled = false
-        let wait = Task {
-            await systemUnderTest.fulfillment(withinSeconds: 30)
-            #expect(hasFulfilled)
-        }
-        Task {
-            systemUnderTest.fulfill()
-            hasFulfilled = true
-        }
-        await wait.value
-    }
-
-    @Test
-    func fulfillment_triggersFalseExpectationWhenItTimesOut() async {
-        await confirmation { confirmation in
-            let systemUnderTest = Expectation(
-                expectedCount: 1,
-                expect: { expectation, _, _ in
-                    #expect(!expectation)
-                    confirmation()
-                }
-            )
-            await systemUnderTest.fulfillment(withinSeconds: 0)
-        }
-    }
+	@Test
+	func fulfillment_triggersFalseExpectationWhenItTimesOut() async {
+		await confirmation { confirmation in
+			let systemUnderTest = Expectation(
+				expectedCount: 1,
+				expect: { expectation, _, _ in
+					#expect(!expectation)
+					confirmation()
+				}
+			)
+			await systemUnderTest.fulfillment(withinSeconds: 0)
+		}
+	}
 }

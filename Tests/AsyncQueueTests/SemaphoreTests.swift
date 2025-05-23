@@ -25,118 +25,117 @@ import Testing
 @testable import AsyncQueue
 
 final class SemaphoreTests {
+	// MARK: Initialization
 
-    // MARK: Initialization
+	deinit {
+		Task { [systemUnderTest] in
+			let isWaiting = await systemUnderTest.isWaiting
+			#expect(!isWaiting)
+		}
+	}
 
-    deinit {
-        Task { [systemUnderTest] in
-            let isWaiting = await systemUnderTest.isWaiting
-            #expect(!isWaiting)
-        }
-    }
+	// MARK: Behavior Tests
 
-    // MARK: Behavior Tests
+	@Test
+	func wait_suspendsUntilEqualNumberOfSignalCalls() async {
+		/*
+		 This test is tricky to pull off!
+		 Our requirements:
+		 1. We need to call `wait()` before `signal()`
+		 2. We need to ensure that the `wait()` call suspends _before_ we call `signal()`
+		 3. We can't `await` the `wait()` call on the test's queue before calling `signal()` since that would deadlock the test.
+		 4. We must utilize a single actor's isolated context to avoid accidental interleaving when suspending to communicate across actor contexts.
 
-    @Test
-    func wait_suspendsUntilEqualNumberOfSignalCalls() async {
-        /*
-         This test is tricky to pull off!
-         Our requirements:
-         1. We need to call `wait()` before `signal()`
-         2. We need to ensure that the `wait()` call suspends _before_ we call `signal()`
-         3. We can't `await` the `wait()` call on the test's queue before calling `signal()` since that would deadlock the test.
-         4. We must utilize a single actor's isolated context to avoid accidental interleaving when suspending to communicate across actor contexts.
+		 In order to ensure that we are executing the `wait()` calls before we call `signal()` _without awaiting a `wait()` call_,
+		 we utilize the AsyncQueue.Semaphore's ordered execution context to enqueue ordered `Task`s similar to how an ActorQueue works.
+		 */
 
-         In order to ensure that we are executing the `wait()` calls before we call `signal()` _without awaiting a `wait()` call_,
-         we utilize the AsyncQueue.Semaphore's ordered execution context to enqueue ordered `Task`s similar to how an ActorQueue works.
-         */
+		let iterationCount = 1_000
+		/// A counter that will only be accessed from within the `systemUnderTest`'s context
+		let unsafeCounter = UnsafeCounter()
 
-        let iterationCount = 1_000
-        /// A counter that will only be accessed from within the `systemUnderTest`'s context
-        let unsafeCounter = UnsafeCounter()
+		for _ in 1...iterationCount {
+			await systemUnderTest.enqueueAndCount(using: unsafeCounter) { systemUnderTest in
+				let didSuspend = await systemUnderTest.wait()
+				#expect(didSuspend)
 
-        for _ in 1...iterationCount {
-            await systemUnderTest.enqueueAndCount(using: unsafeCounter) { systemUnderTest in
-                let didSuspend = await systemUnderTest.wait()
-                #expect(didSuspend)
+				return { systemUnderTest in
+					// Signal that the suspended wait call above has resumed.
+					// This signal allows us to `wait()` for all of these enqueued `wait()` tasks to have completed later in this test.
+					systemUnderTest.signal()
+				}
+			}
+		}
 
-                return { systemUnderTest in
-                    // Signal that the suspended wait call above has resumed.
-                    // This signal allows us to `wait()` for all of these enqueued `wait()` tasks to have completed later in this test.
-                    systemUnderTest.signal()
-                }
-            }
-        }
+		// Loop one fewer than iterationCount.
+		for _ in 1..<iterationCount {
+			await systemUnderTest.execute { systemUnderTest in
+				systemUnderTest.signal()
+			}
+		}
 
-        // Loop one fewer than iterationCount.
-        for _ in 1..<iterationCount {
-            await systemUnderTest.execute { systemUnderTest in
-                systemUnderTest.signal()
-            }
-        }
+		await systemUnderTest.execute { systemUnderTest in
+			// Give each suspended `wait` task an opportunity to resume (if they were to resume, which they won't) before we check the count.
+			for _ in 1...iterationCount {
+				await Task.yield()
+			}
 
-        await systemUnderTest.execute { systemUnderTest in
-            // Give each suspended `wait` task an opportunity to resume (if they were to resume, which they won't) before we check the count.
-            for _ in 1...iterationCount {
-                await Task.yield()
-            }
+			// The count will still be zero each time because we have executed one more `wait` than `signal` calls.
+			let completedCountedTasks = unsafeCounter.countedTasksCompleted
+			#expect(completedCountedTasks == 0)
 
-            // The count will still be zero each time because we have executed one more `wait` than `signal` calls.
-            let completedCountedTasks = unsafeCounter.countedTasksCompleted
-            #expect(completedCountedTasks == 0)
+			// Signal one last time, enabling all of the original `wait` calls to resume.
+			systemUnderTest.signal()
 
-            // Signal one last time, enabling all of the original `wait` calls to resume.
-            systemUnderTest.signal()
+			for _ in 1...iterationCount {
+				// Wait for all enqueued `wait`s to have completed and signaled their completion.
+				await systemUnderTest.wait()
+			}
 
-            for _ in 1...iterationCount {
-                // Wait for all enqueued `wait`s to have completed and signaled their completion.
-                await systemUnderTest.wait()
-            }
+			let tasksCompleted = unsafeCounter.countedTasksCompleted
+			#expect(iterationCount == tasksCompleted)
+		}
+	}
 
-            let tasksCompleted = unsafeCounter.countedTasksCompleted
-            #expect(iterationCount == tasksCompleted)
-        }
-    }
+	@Test
+	func wait_doesNotSuspendIfSignalCalledFirst() async {
+		await systemUnderTest.signal()
+		let didSuspend = await systemUnderTest.wait()
+		#expect(!didSuspend)
+	}
 
-    @Test
-    func wait_doesNotSuspendIfSignalCalledFirst() async {
-        await systemUnderTest.signal()
-        let didSuspend = await systemUnderTest.wait()
-        #expect(!didSuspend)
-    }
+	// MARK: Private
 
-    // MARK: Private
-
-    private let systemUnderTest = AsyncQueue.Semaphore()
+	private let systemUnderTest = AsyncQueue.Semaphore()
 }
 
 // MARK: - AsyncQueue.Semaphore Extension
 
-private extension AsyncQueue.Semaphore {
-    /// Enqueues an asynchronous task and increments a counter after the task completes.
-    /// This method suspends the caller until the asynchronous task has begun, ensuring ordered execution of enqueued tasks.
-    /// - Parameter task: A unit of work that returns work to execute after the task completes and the count is incremented.
-    func enqueueAndCount(using counter: UnsafeCounter, _ task: @escaping @Sendable (isolated AsyncQueue.Semaphore) async -> (@Sendable (isolated AsyncQueue.Semaphore) -> Void)?) async {
-        // Await the start of the soon-to-be-enqueued `Task` with a continuation.
-        await withCheckedContinuation { continuation in
-            // Re-enter the semaphore's ordered context but don't wait for the result.
-            Task {
-                // Now that we're back in the semaphore's ordered context, allow the calling code to resume.
-                continuation.resume()
-                let executeAfterIncrement = await task(self)
-                counter.countedTasksCompleted += 1
-                executeAfterIncrement?(self)
-            }
-        }
-    }
+extension AsyncQueue.Semaphore {
+	/// Enqueues an asynchronous task and increments a counter after the task completes.
+	/// This method suspends the caller until the asynchronous task has begun, ensuring ordered execution of enqueued tasks.
+	/// - Parameter task: A unit of work that returns work to execute after the task completes and the count is incremented.
+	fileprivate func enqueueAndCount(using counter: UnsafeCounter, _ task: @escaping @Sendable (isolated AsyncQueue.Semaphore) async -> (@Sendable (isolated AsyncQueue.Semaphore) -> Void)?) async {
+		// Await the start of the soon-to-be-enqueued `Task` with a continuation.
+		await withCheckedContinuation { continuation in
+			// Re-enter the semaphore's ordered context but don't wait for the result.
+			Task {
+				// Now that we're back in the semaphore's ordered context, allow the calling code to resume.
+				continuation.resume()
+				let executeAfterIncrement = await task(self)
+				counter.countedTasksCompleted += 1
+				executeAfterIncrement?(self)
+			}
+		}
+	}
 
-    func execute(_ task: @Sendable (isolated AsyncQueue.Semaphore) async throws -> Void) async rethrows {
-        try await task(self)
-    }
+	fileprivate func execute(_ task: @Sendable (isolated AsyncQueue.Semaphore) async throws -> Void) async rethrows {
+		try await task(self)
+	}
 }
 
 // MARK: - UnsafeCounter
 
 private final class UnsafeCounter: @unchecked Sendable {
-    var countedTasksCompleted = 0
+	var countedTasksCompleted = 0
 }
