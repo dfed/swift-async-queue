@@ -100,3 +100,12 @@ jobs:
         uses: actions/checkout@v4
       - name: Link Checker
         uses: AlexanderDokuchaev/md-dead-link-check@v1.0.1
+  lint-swift:
+    name: Lint Swift
+    runs-on: ubuntu-latest
+    container: swift:6.0
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+      - name: Lint Swift
+        run: swift run --package-path CLI swiftformat . --lint
