@@ -1,0 +1,15 @@
+[*]
+insert_final_newline = true
+indent_size = 4 # We can remove this line if anyone has strong opinions.
+
+# swift
+[*.swift]
+indent_style = tab
+
+# sh
+[*.sh]
+indent_style = tab
+
+# documentation, utils
+[*.{md,mdx,diff}]
+trim_trailing_whitespace = false
