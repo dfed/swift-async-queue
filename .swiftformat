@@ -1,6 +1,6 @@
 # format options
 --indent tab
---modifierorder nonisolated,open,public,internal,fileprivate,private,private(set),final,override,required
+--modifierorder nonisolated,open,public,internal,fileprivate,private,private(set),final,override,required,convenience
 --ranges no-space
 --extensionacl on-declarations
 --funcattributes prev-line
