@@ -47,7 +47,7 @@ public actor Expectation {
 	public func fulfillment(
 		withinSeconds seconds: UInt64,
 		filePath: String = #filePath,
-		fileID _: String = #fileID,
+		fileID: String = #fileID,
 		line: Int = #line,
 		column: Int = #column
 	) async {
@@ -55,7 +55,7 @@ public actor Expectation {
 		let wait = Task {
 			try await Task.sleep(nanoseconds: seconds * 1_000_000_000)
 			expect(isComplete, "Expectation not fulfilled within \(seconds) seconds", .init(
-				fileID: filePath,
+				fileID: fileID,
 				filePath: filePath,
 				line: line,
 				column: column
@@ -96,7 +96,7 @@ public actor Expectation {
 
 	private func _fulfill(
 		filePath: String,
-		fileID _: String,
+		fileID: String,
 		line: Int,
 		column: Int
 	) {
@@ -106,7 +106,7 @@ public actor Expectation {
 			expectedCount == fulfillCount,
 			"Expected \(expectedCount) calls to `fulfill()`. Received \(fulfillCount).",
 			.init(
-				fileID: filePath,
+				fileID: fileID,
 				filePath: filePath,
 				line: line,
 				column: column

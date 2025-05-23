@@ -26,13 +26,13 @@ actor Counter {
 	func incrementAndExpectCount(
 		equals expectedCount: Int,
 		filePath: String = #filePath,
-		fileID _: String = #fileID,
+		fileID: String = #fileID,
 		line: Int = #line,
 		column: Int = #column
 	) {
 		increment()
 		#expect(expectedCount == count, sourceLocation: .init(
-			fileID: filePath,
+			fileID: fileID,
 			filePath: filePath,
 			line: line,
 			column: column
