@@ -23,98 +23,98 @@
 import Testing
 
 public actor Expectation {
+	// MARK: Initialization
 
-    // MARK: Initialization
+	public init(
+		expectedCount: UInt = 1
+	) {
+		self.init(
+			expectedCount: expectedCount,
+			expect: { #expect($0, $1, sourceLocation: $2) }
+		)
+	}
 
-    public init(
-        expectedCount: UInt = 1
-    ) {
-        self.init(
-            expectedCount: expectedCount,
-            expect: { #expect($0, $1, sourceLocation: $2) }
-        )
-    }
+	init(
+		expectedCount: UInt,
+		expect: @escaping (Bool, Comment?, SourceLocation) -> Void
+	) {
+		self.expectedCount = expectedCount
+		self.expect = expect
+	}
 
-    init(
-        expectedCount: UInt,
-        expect: @escaping (Bool, Comment?, SourceLocation) -> Void
-    ) {
-        self.expectedCount = expectedCount
-        self.expect = expect
-    }
+	// MARK: Public
 
-    // MARK: Public
+	public func fulfillment(
+		withinSeconds seconds: UInt64,
+		filePath: String = #filePath,
+		fileID: String = #fileID,
+		line: Int = #line,
+		column: Int = #column
+	) async {
+		guard !isComplete else { return }
+		let wait = Task {
+			try await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+			expect(isComplete, "Expectation not fulfilled within \(seconds) seconds", .init(
+				fileID: fileID,
+				filePath: filePath,
+				line: line,
+				column: column
+			))
+		}
+		waits.append(wait)
+		try? await wait.value
+	}
 
-    public func fulfillment(
-        withinSeconds seconds: UInt64,
-        filePath: String = #filePath,
-        fileID: String = #fileID,
-        line: Int = #line,
-        column: Int = #column
-    ) async {
-        guard !isComplete else { return }
-        let wait = Task {
-            try await Task.sleep(nanoseconds: seconds * 1_000_000_000)
-            expect(isComplete, "Expectation not fulfilled within \(seconds) seconds", .init(
-                fileID: filePath,
-                filePath: filePath,
-                line: line,
-                column: column
-            ))
-        }
-        waits.append(wait)
-        try? await wait.value
-    }
+	@discardableResult
+	nonisolated
+	public func fulfill(
+		filePath: String = #filePath,
+		fileID: String = #fileID,
+		line: Int = #line,
+		column: Int = #column
+	) -> Task<Void, Never> {
+		Task {
+			await self._fulfill(
+				filePath: filePath,
+				fileID: fileID,
+				line: line,
+				column: column
+			)
+		}
+	}
 
-    @discardableResult
-    nonisolated
-    public func fulfill(
-        filePath: String = #filePath,
-        fileID: String = #fileID,
-        line: Int = #line,
-        column: Int = #column
-    ) -> Task<Void, Never> {
-        Task {
-            await self._fulfill(
-                filePath: filePath,
-                fileID: fileID,
-                line: line,
-                column: column
-            )
-        }
-    }
+	// MARK: Private
 
-    // MARK: Private
+	private var waits = [Task<Void, Error>]()
+	private var fulfillCount: UInt = 0
+	private var isComplete: Bool {
+		expectedCount <= fulfillCount
+	}
 
-    private var waits = [Task<Void, Error>]()
-    private var fulfillCount: UInt = 0
-    private var isComplete: Bool {
-        expectedCount <= fulfillCount
-    }
-    private let expectedCount: UInt
-    private let expect: (Bool, Comment?, SourceLocation) -> Void
+	private let expectedCount: UInt
+	private let expect: (Bool, Comment?, SourceLocation) -> Void
 
-    private func _fulfill(
-        filePath: String,
-        fileID: String,
-        line: Int,
-        column: Int
-    ) {
-        fulfillCount += 1
-        guard isComplete else { return }
-        expect(
-            expectedCount == fulfillCount,
-            "Expected \(expectedCount) calls to `fulfill()`. Received \(fulfillCount).",
-            .init(
-                fileID: filePath,
-                filePath: filePath,
-                line: line,
-                column: column
-            )
-        )
-        for wait in waits {
-            wait.cancel()
-        }
-        waits = []
-    }
+	private func _fulfill(
+		filePath: String,
+		fileID: String,
+		line: Int,
+		column: Int
+	) {
+		fulfillCount += 1
+		guard isComplete else { return }
+		expect(
+			expectedCount == fulfillCount,
+			"Expected \(expectedCount) calls to `fulfill()`. Received \(fulfillCount).",
+			.init(
+				fileID: fileID,
+				filePath: filePath,
+				line: line,
+				column: column
+			)
+		)
+		for wait in waits {
+			wait.cancel()
+		}
+		waits = []
+	}
 }

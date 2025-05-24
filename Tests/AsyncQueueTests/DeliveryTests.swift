@@ -26,29 +26,28 @@ import Testing
 @testable import AsyncQueue
 
 struct DeliveryTests {
+	// MARK: Behavior Tests
 
-    // MARK: Behavior Tests
+	@Test
+	func getValue_whenValueExists() async {
+		let systemUnderTest = Delivery<Bool, Never>()
+		await systemUnderTest.sendValue(true)
+		await #expect(systemUnderTest.getValue() == true)
+	}
 
-    @Test
-    func getValue_whenValueExists() async {
-        let systemUnderTest = Delivery<Bool, Never>()
-        await systemUnderTest.sendValue(true)
-        await #expect(systemUnderTest.getValue() == true)
-    }
+	@Test
+	func getValueThrowing_whenValueExists() async throws {
+		let systemUnderTest = Delivery<Bool, Error>()
+		await systemUnderTest.sendValue(true)
+		try await #expect(systemUnderTest.getValue() == true)
+	}
 
-    @Test
-    func getValueThrowing_whenValueExists() async throws {
-        let systemUnderTest = Delivery<Bool, Error>()
-        await systemUnderTest.sendValue(true)
-        try await #expect(systemUnderTest.getValue() == true)
-    }
-
-    @Test
-    func getValueThrowing_whenFailureExists() async throws {
-        let systemUnderTest = Delivery<Bool, Error>()
-        await systemUnderTest.sendFailure(CancellationError())
-        await #expect(throws: CancellationError.self, performing: {
-            try await systemUnderTest.getValue()
-        })
-    }
+	@Test
+	func getValueThrowing_whenFailureExists() async throws {
+		let systemUnderTest = Delivery<Bool, Error>()
+		await systemUnderTest.sendFailure(CancellationError())
+		await #expect(throws: CancellationError.self, performing: {
+			try await systemUnderTest.getValue()
+		})
+	}
 }

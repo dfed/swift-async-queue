@@ -1,0 +1,20 @@
+# format options
+--indent tab
+--modifierorder nonisolated,open,public,internal,fileprivate,private,private(set),final,override,required,convenience
+--ranges no-space
+--extensionacl on-declarations
+--funcattributes prev-line
+--typeattributes prev-line
+--storedvarattrs same-line
+--hexgrouping none
+--decimalgrouping 3
+
+# rules
+--enable isEmpty
+--enable wrapEnumCases
+--enable wrapMultilineStatementBraces
+--disable consistentSwitchCaseSpacing
+--disable blankLineAfterSwitchCase
+
+# global
+--swiftversion 6.0

@@ -23,121 +23,121 @@
 import Dispatch
 
 actor Delivery<Success: Sendable, Failure: Error> {
-    func sendValue(_ value: Success) {
-        self.value = value
-    }
+	func sendValue(_ value: Success) {
+		self.value = value
+	}
 
-    func sendFailure(_ failure: Failure) {
-        self.failure = failure
-    }
+	func sendFailure(_ failure: Failure) {
+		self.failure = failure
+	}
 
-    nonisolated
-    func cancel() {
-        taskContainer.withLock {
-            $0.isCancelled = true
-            $0.task?.cancel()
-        }
-    }
+	nonisolated
+	func cancel() {
+		taskContainer.withLock {
+			$0.isCancelled = true
+			$0.task?.cancel()
+		}
+	}
 
-    @discardableResult
-    func execute<ActorType: Actor>(
-        _ operation: sending @escaping (isolated ActorType) async -> Void,
-        in context: isolated ActorType,
-        priority: TaskPriority? = nil
-    ) -> Task<Void, Never> {
-        // In Swift 6, a `Task` enqueued from an actor begins executing immediately on that actor.
-        // Since we're running on our actor's context already, we can just dispatch a Task to get first-enqueued-first-start task execution.
-        let task = Task(priority: priority) {
-            await operation(context)
-        }
-        taskContainer.withLock {
-            if $0.isCancelled {
-                task.cancel()
-            }
-            $0.task = task
-        }
-        return task
-    }
+	@discardableResult
+	func execute<ActorType: Actor>(
+		_ operation: sending @escaping (isolated ActorType) async -> Void,
+		in context: isolated ActorType,
+		priority: TaskPriority? = nil
+	) -> Task<Void, Never> {
+		// In Swift 6, a `Task` enqueued from an actor begins executing immediately on that actor.
+		// Since we're running on our actor's context already, we can just dispatch a Task to get first-enqueued-first-start task execution.
+		let task = Task(priority: priority) {
+			await operation(context)
+		}
+		taskContainer.withLock {
+			if $0.isCancelled {
+				task.cancel()
+			}
+			$0.task = task
+		}
+		return task
+	}
 
-    private var value: Success? {
-        didSet {
-            if let value {
-                valueContinuations.forEach { $0.resume(returning: value) }
-                valueContinuations.removeAll()
-            }
-        }
-    }
+	private var value: Success? {
+		didSet {
+			if let value {
+				valueContinuations.forEach { $0.resume(returning: value) }
+				valueContinuations.removeAll()
+			}
+		}
+	}
 
-    private var failure: Failure? {
-        didSet {
-            if let failure {
-                valueContinuations.forEach { $0.resume(throwing: failure) }
-                valueContinuations.removeAll()
-            }
-        }
-    }
+	private var failure: Failure? {
+		didSet {
+			if let failure {
+				valueContinuations.forEach { $0.resume(throwing: failure) }
+				valueContinuations.removeAll()
+			}
+		}
+	}
 
-    private var valueContinuations: [UnsafeContinuation<Success, Failure>] = []
-    private let taskContainer = Locked(value: TaskContainer())
+	private var valueContinuations: [UnsafeContinuation<Success, Failure>] = []
+	private let taskContainer = Locked(value: TaskContainer())
 
-    struct TaskContainer {
-        var task: Task<Void, Never>?
-        var isCancelled = false
-    }
+	struct TaskContainer {
+		var task: Task<Void, Never>?
+		var isCancelled = false
+	}
 }
 
 extension Delivery where Failure == Never {
-    func getValue() async -> Success {
-        if let value {
-            value
-        } else {
-            await withUnsafeContinuation { continuation in
-                valueContinuations.append(continuation)
-            }
-        }
-    }
+	func getValue() async -> Success {
+		if let value {
+			value
+		} else {
+			await withUnsafeContinuation { continuation in
+				valueContinuations.append(continuation)
+			}
+		}
+	}
 }
 
 extension Delivery where Failure == any Error {
-    func getValue() async throws -> Success {
-        if let value {
-            value
-        } else if let failure {
-            throw failure
-        } else {
-            try await withUnsafeThrowingContinuation { continuation in
-                valueContinuations.append(continuation)
-            }
-        }
-    }
+	func getValue() async throws -> Success {
+		if let value {
+			value
+		} else if let failure {
+			throw failure
+		} else {
+			try await withUnsafeThrowingContinuation { continuation in
+				valueContinuations.append(continuation)
+			}
+		}
+	}
 }
 
 // MARK: - Locked
 
 // We'd use `OSAllocatedUnfairLock` or `Mutex` but the minimum supported version is much higher than what we support.
 private struct Locked<State>: @unchecked Sendable {
-    init(value: State) {
-        container = .init(value: value)
-    }
+	init(value: State) {
+		container = .init(value: value)
+	}
 
-    func withLock<R>(_ body: @Sendable (inout State) throws -> R) rethrows -> R where R: Sendable {
-        try lockQueue.sync {
-            var value = container.unsafeValue
-            let returnValue = try body(&value)
-            container.unsafeValue = value
-            return returnValue
-        }
-    }
+	func withLock<R>(_ body: @Sendable (inout State) throws -> R) rethrows -> R where R: Sendable {
+		try lockQueue.sync {
+			var value = container.unsafeValue
+			let returnValue = try body(&value)
+			container.unsafeValue = value
+			return returnValue
+		}
+	}
 
-    private let container: UnsafeContainer
+	private let container: UnsafeContainer
 
-    private final class UnsafeContainer: @unchecked Sendable {
-        init(value: State) {
-            unsafeValue = value
-        }
+	private final class UnsafeContainer: @unchecked Sendable {
+		init(value: State) {
+			unsafeValue = value
+		}
 
-        var unsafeValue: State
-    }
+		var unsafeValue: State
+	}
 }
 
 private let lockQueue = DispatchQueue(label: "LockedValue.lockQueue", target: DispatchQueue.global())

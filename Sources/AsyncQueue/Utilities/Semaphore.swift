@@ -22,49 +22,49 @@
 
 /// A thread-safe semaphore implementation.
 actor Semaphore {
-    // MARK: Initialization
+	// MARK: Initialization
 
-    init() {}
+	init() {}
 
-    // MARK: Public
+	// MARK: Public
 
-    /// Decrement the counting semaphore. If the resulting value is less than zero, this function waits for a signal to occur before returning.
-    /// - Returns: Whether the call triggered a suspension
-    @discardableResult
-    func wait() async -> Bool {
-        count -= 1
-        guard count < 0 else {
-            // We don't need to wait because count is greater than or equal to zero.
-            return false
-        }
+	/// Decrement the counting semaphore. If the resulting value is less than zero, this function waits for a signal to occur before returning.
+	/// - Returns: Whether the call triggered a suspension
+	@discardableResult
+	func wait() async -> Bool {
+		count -= 1
+		guard count < 0 else {
+			// We don't need to wait because count is greater than or equal to zero.
+			return false
+		}
 
-        await withUnsafeContinuation { continuation in
-            continuations.append(continuation)
-        }
-        return true
-    }
+		await withUnsafeContinuation { continuation in
+			continuations.append(continuation)
+		}
+		return true
+	}
 
-    /// Increment the counting semaphore. If the previous value was less than zero, this function resumes a waiting thread before returning.
-    func signal() {
-        count += 1
-        guard !isWaiting else {
-            // Continue waiting.
-            return
-        }
+	/// Increment the counting semaphore. If the previous value was less than zero, this function resumes a waiting thread before returning.
+	func signal() {
+		count += 1
+		guard !isWaiting else {
+			// Continue waiting.
+			return
+		}
 
-        for continuation in continuations {
-            continuation.resume()
-        }
+		for continuation in continuations {
+			continuation.resume()
+		}
 
-        continuations.removeAll()
-    }
+		continuations.removeAll()
+	}
 
-    var isWaiting: Bool {
-        count < 0
-    }
+	var isWaiting: Bool {
+		count < 0
+	}
 
-    // MARK: Private
+	// MARK: Private
 
-    private var continuations = [UnsafeContinuation<Void, Never>]()
-    private var count = 0
+	private var continuations = [UnsafeContinuation<Void, Never>]()
+	private var count = 0
 }
