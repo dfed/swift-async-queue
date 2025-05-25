@@ -1,6 +1,6 @@
 [*]
 insert_final_newline = true
-indent_size = 4 # We can remove this line if anyone has strong opinions.
+indent_size = 4
 
 # swift
 [*.swift]
