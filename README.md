@@ -164,15 +164,6 @@ func mainActorQueueOrdering() async {
 }
 ```
 
-## Requirements
-
-* Xcode 16.0 or later.
-* iOS 13 or later.
-* tvOS 13 or later.
-* watchOS 6 or later.
-* macOS 10.15 or later.
-* Swift 5.10 or later.
-
 ## Installation
 
 ### Swift Package Manager
