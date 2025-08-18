@@ -101,6 +101,10 @@ jobs:
       - name: Prepare Coverage Reports
         run: |
           llvm-cov export -format="lcov" .build/x86_64-unknown-linux-gnu/release/swift-async-queuePackageTests.xctest -instr-profile .build/x86_64-unknown-linux-gnu/release/codecov/default.profdata > coverage.lcov
+      - name: Install curl for Codecov
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates
       - name: Upload Coverage Reports
         if: success()
         uses: codecov/codecov-action@v5
@@ -121,6 +125,10 @@ jobs:
       - name: Prepare Coverage Reports
         run: |
           llvm-cov export -format="lcov" .build/x86_64-unknown-linux-gnu/release/swift-async-queuePackageTests.xctest -instr-profile .build/x86_64-unknown-linux-gnu/release/codecov/default.profdata > coverage.lcov
+      - name: Install curl for Codecov
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates
       - name: Upload Coverage Reports
         if: success()
         uses: codecov/codecov-action@v5
