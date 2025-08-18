@@ -67,9 +67,10 @@ jobs:
         run: ./Scripts/prepare-coverage-reports.sh
       - name: Upload Coverage Reports
         if: success()
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
+          verbose: true
   spm-16-swift:
     name: Swift Build Xcode 16
     runs-on: macos-15
@@ -86,8 +87,8 @@ jobs:
         run: sudo xcode-select --switch /Applications/Xcode_16.app/Contents/Developer
       - name: Build and Test Framework
         run: xcrun swift test -c release -Xswiftc -enable-testing
-  linux:
-    name: "Build and Test on Linux"
+  linux-6-0:
+    name: "Build and Test on Linux Swift 6.0"
     runs-on: ubuntu-24.04
     container: swift:6.0
     permissions:
@@ -100,9 +101,40 @@ jobs:
       - name: Prepare Coverage Reports
         run: |
           llvm-cov export -format="lcov" .build/x86_64-unknown-linux-gnu/release/swift-async-queuePackageTests.xctest -instr-profile .build/x86_64-unknown-linux-gnu/release/codecov/default.profdata > coverage.lcov
+      - name: Install curl for Codecov
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates
       - name: Upload Coverage Reports
         if: success()
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
+        with:
+          fail_ci_if_error: true
+          verbose: true
+  linux-6-1:
+    name: "Build and Test on Linux Swift 6.1"
+    runs-on: ubuntu-24.04
+    container: swift:6.1
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v5
+      - name: Build and Test Framework
+        run: swift test -c release --enable-code-coverage -Xswiftc -enable-testing
+      - name: Prepare Coverage Reports
+        run: |
+          llvm-cov export -format="lcov" .build/x86_64-unknown-linux-gnu/release/swift-async-queuePackageTests.xctest -instr-profile .build/x86_64-unknown-linux-gnu/release/codecov/default.profdata > coverage.lcov
+      - name: Install curl for Codecov
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates
+      - name: Upload Coverage Reports
+        if: success()
+        uses: codecov/codecov-action@v5
+        with:
+          fail_ci_if_error: true
+          verbose: true
   readme-validation:
     name: Check Markdown links
     runs-on: ubuntu-latest
