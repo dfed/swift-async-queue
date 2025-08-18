@@ -69,7 +69,8 @@ jobs:
         if: success()
         uses: codecov/codecov-action@v5
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
+          verbose: true
   spm-16-swift:
     name: Swift Build Xcode 16
     runs-on: macos-15
@@ -103,6 +104,9 @@ jobs:
       - name: Upload Coverage Reports
         if: success()
         uses: codecov/codecov-action@v5
+        with:
+          fail_ci_if_error: true
+          verbose: true
   linux-6-1:
     name: "Build and Test on Linux Swift 6.1"
     runs-on: ubuntu-24.04
@@ -120,6 +124,9 @@ jobs:
       - name: Upload Coverage Reports
         if: success()
         uses: codecov/codecov-action@v5
+        with:
+          fail_ci_if_error: true
+          verbose: true
   readme-validation:
     name: Check Markdown links
     runs-on: ubuntu-latest
