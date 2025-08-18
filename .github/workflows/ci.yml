@@ -21,7 +21,7 @@ jobs:
           ruby-version: '3.3.5'
           bundler-cache: true
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_16.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
       - name: Download visionOS
         run: |
           sudo xcodebuild -runFirstLaunch
@@ -49,7 +49,7 @@ jobs:
           ruby-version: '3.3.5'
           bundler-cache: true
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_16.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
       - name: Download visionOS
         if: matrix.platforms == 'visionOS_2'
         run: |
