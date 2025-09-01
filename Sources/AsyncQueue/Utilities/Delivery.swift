@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import Dispatch
+import Foundation
 
 actor Delivery<Success: Sendable, Failure: Error> {
 	func sendValue(_ value: Success) {
@@ -115,29 +115,17 @@ extension Delivery where Failure == any Error {
 // MARK: - Locked
 
 // We'd use `OSAllocatedUnfairLock` or `Mutex` but the minimum supported version is much higher than what we support.
-private struct Locked<State>: @unchecked Sendable {
+private final class Locked<State>: @unchecked Sendable {
 	init(value: State) {
-		container = .init(value: value)
+		unsafeValue = value
 	}
 
 	func withLock<R>(_ body: @Sendable (inout State) throws -> R) rethrows -> R where R: Sendable {
-		try lockQueue.sync {
-			var value = container.unsafeValue
-			let returnValue = try body(&value)
-			container.unsafeValue = value
-			return returnValue
-		}
+		lock.lock()
+		defer { lock.unlock() }
+		return try body(&unsafeValue)
 	}
 
-	private let container: UnsafeContainer
-
-	private final class UnsafeContainer: @unchecked Sendable {
-		init(value: State) {
-			unsafeValue = value
-		}
-
-		var unsafeValue: State
-	}
+	private var unsafeValue: State
+	private let lock = NSLock()
 }
-
-private let lockQueue = DispatchQueue(label: "LockedValue.lockQueue", target: DispatchQueue.global())
