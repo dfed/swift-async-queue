@@ -58,7 +58,7 @@ public final class FIFOQueue: Sendable {
 
 extension Task {
 	/// Runs the given nonthrowing operation asynchronously
-	/// as part of a new top-level task on behalf of the current actor.
+	/// as part of a new top-level task that inherits the current isolated context.
 	/// The operation will not execute until all prior tasks – including
 	/// suspended tasks – have completed.
 	///
@@ -108,7 +108,7 @@ extension Task {
 	}
 
 	/// Runs the given throwing operation asynchronously
-	/// as part of a new top-level task on behalf of the current actor.
+	/// as part of a new top-level task that inherits the current isolated context.
 	/// The operation will not execute until all prior tasks – including
 	/// suspended tasks – have completed.
 	///
@@ -162,7 +162,7 @@ extension Task {
 	}
 
 	/// Runs the given nonthrowing operation asynchronously
-	/// as part of a new top-level task on behalf of the current actor.
+	/// as part of a new top-level task isolated to the given actor.
 	/// The operation will not execute until all prior tasks – including
 	/// suspended tasks – have completed.
 	///
@@ -214,7 +214,7 @@ extension Task {
 	}
 
 	/// Runs the given throwing operation asynchronously
-	/// as part of a new top-level task on behalf of the current actor.
+	/// as part of a new top-level task isolated to the given actor.
 	/// The operation will not execute until all prior tasks – including
 	/// suspended tasks – have completed.
 	///
