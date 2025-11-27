@@ -55,11 +55,12 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
 	// MARK: Initialization
 
 	/// Instantiates an actor queue.
-	public init() {
+	/// - Parameter name: Human readable name of the task.
+	public init(name: String? = nil) {
 		let (taskStream, taskStreamContinuation) = AsyncStream<ActorTask>.makeStream()
 		self.taskStreamContinuation = taskStreamContinuation
 
-		Task {
+		Task(name: name) {
 			// In an ideal world, we would isolate this `for await` loop to the `ActorType`.
 			// However, there's no good way to do that without retaining the actor and creating a cycle.
 			for await actorTask in taskStream {
