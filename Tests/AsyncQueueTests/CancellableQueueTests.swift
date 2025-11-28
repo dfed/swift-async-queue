@@ -25,7 +25,7 @@ import Testing
 @testable import AsyncQueue
 
 struct CancellableQueueTests {
-	// MARK: FIFOQueue Tests
+	// MARK: Behavior Tests
 
 	@Test
 	func cancelTasks_fifoQueue_doesNotCancelCompletedTask() async {
@@ -116,8 +116,6 @@ struct CancellableQueueTests {
 
 		#expect(!task.isCancelled)
 	}
-
-	// MARK: ActorQueue Tests
 
 	@Test
 	func cancelTasks_actorQueue_doesNotCancelCompletedTask() async {
@@ -229,8 +227,6 @@ struct CancellableQueueTests {
 
 		#expect(!task.isCancelled)
 	}
-
-	// MARK: MainActor Queue Tests
 
 	@Test
 	func cancelTasks_mainActorQueue_doesNotCancelCompletedTask() async {
