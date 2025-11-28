@@ -168,7 +168,7 @@ struct CancellableQueueTests {
 	}
 
 	@Test
-	func cancelTasks_actorQueue_cancelsAllConcurrentlyExecutingTasks() async {
+	func cancelTasks_actorQueue_cancelsCurrentlyExecutingAndPendingTasks() async {
 		let actorQueue = ActorQueue<Counter>()
 		let counter = Counter()
 		actorQueue.adoptExecutionContext(of: counter)
@@ -275,7 +275,7 @@ struct CancellableQueueTests {
 	}
 
 	@Test
-	func cancelTasks_mainActorQueue_cancelsAllConcurrentlyExecutingTasks() async {
+	func cancelTasks_mainActorQueue_cancelsCurrentlyExecutingAndPendingTasks() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: MainActor.queue)
 		let task1Started = Semaphore()
 		let task2Started = Semaphore()
