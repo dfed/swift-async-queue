@@ -182,7 +182,7 @@ struct CancellableQueueTests {
 			await taskAllowedToEnd.wait()
 		}
 
-		// Create pending tasks that won't start until the first task suspends
+		// Create additional tasks
 		let task2 = Task(on: systemUnderTest) { _ in }
 
 		let task3 = Task(on: systemUnderTest) { _ in }
@@ -275,7 +275,7 @@ struct CancellableQueueTests {
 			await taskAllowedToEnd.wait()
 		}
 
-		// Create pending tasks that won't start until the first task suspends
+		// Create additional tasks
 		let task2 = Task(on: systemUnderTest) { }
 
 		let task3 = Task(on: systemUnderTest) { }
