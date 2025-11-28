@@ -175,15 +175,17 @@ A `CancellableQueue` wraps an underlying queue and tracks all tasks enqueued on 
 func cancellableQueueExample() async {
     actor ImageLoader {
         init() {
-            queue.adoptExecutionContext(of: self)
+            let actorQueue = ActorQueue<ImageLoader>()
+            cancellableQueue = CancellableQueue(underlyingQueue: actorQueue)
+            actorQueue.adoptExecutionContext(of: self)
         }
 
         nonisolated
         func loadImage(from url: URL) -> Task<UIImage?, Never> {
             Task(on: cancellableQueue) { myself in
-                // Check for cancellation before starting work.
-                guard !Task.isCancelled else { return nil }
-                return await myself.fetchImage(from: url)
+                guard let image = try await myself.fetchImage(from: url) else { return nil }
+                try Task.checkCancellation()
+                return myself.processImage(image)
             }
         }
 
@@ -193,13 +195,15 @@ func cancellableQueueExample() async {
             cancellableQueue.cancelTasks()
         }
 
-        private func fetchImage(from url: URL) async -> UIImage? {
-            // Fetch image implementation...
-            nil
+        private func fetchImage(from url: URL) async throws -> UIImage? {
+            // Fetch image implementation…
         }
 
+        private func processImage(_ image: UIImage) async -> UIImage {
+            // Expensive image processing implementation…
+        }
         private let queue = ActorQueue<ImageLoader>()
-        private lazy var cancellableQueue = CancellableQueue(underlyingQueue: queue)
+        private let cancellableQueue: CancellableQueue<ActorQueue<ImageLoader>>
     }
 
     let loader = ImageLoader()
@@ -221,8 +225,7 @@ func cancellableQueueExample() async {
 
 A `CancellableQueue` can also wrap a `FIFOQueue` for FIFO-ordered cancellable tasks:
 ```swift
-let fifoQueue = FIFOQueue()
-let cancellableQueue = CancellableQueue(underlyingQueue: fifoQueue)
+let cancellableQueue = CancellableQueue(underlyingQueue: FIFOQueue())
 
 Task(on: cancellableQueue) {
     // This work can be cancelled via cancellableQueue.cancelTasks()
