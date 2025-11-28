@@ -424,10 +424,6 @@ private final class Lock<State>: @unchecked Sendable {
 
 	// MARK: Fileprivate
 
-	fileprivate var value: State {
-		lockQueue.sync { unsafeValue }
-	}
-
 	fileprivate func withLock<R>(_ body: @Sendable (inout State) throws -> R) rethrows -> R where R: Sendable {
 		try lockQueue.sync {
 			try body(&unsafeValue)
