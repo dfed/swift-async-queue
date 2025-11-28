@@ -22,7 +22,11 @@
 
 import Foundation
 
-/// A queue that is capable of cancelling incomplete tasks.
+/// A queue wrapper that enables cancelling all currently executing and pending tasks.
+///
+/// A `CancellableQueue` wraps either a `FIFOQueue` or an `ActorQueue` and tracks all tasks enqueued on it.
+/// Calling `cancelTasks()` will cancel both the currently executing task and any tasks waiting in the queue.
+/// Tasks that have already completed are unaffected, and tasks enqueued after `cancelTasks()` is called will execute normally.
 public final class CancellableQueue<UnderlyingQueue: Sendable>: Sendable {
 	// MARK: Initialization
 
@@ -72,6 +76,8 @@ extension Task {
 	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
+	///   - priority: The priority of the task.
+	///     Pass `nil` to use the priority from `Task.currentPriority`.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
@@ -340,6 +346,8 @@ extension Task {
 	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
+	///   - priority: The priority of the task.
+	///     Pass `nil` to use the priority from `Task.currentPriority`.
 	///   - fifoQueue: The queue on which to enqueue the task.
 	///   - isolatedActor: The actor to which the operation is isolated.
 	///   - operation: The operation to perform.
@@ -386,7 +394,7 @@ extension Task {
 	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
-	///   - priority: The priority of the queue.
+	///   - priority: The priority of the task.
 	///     Pass `nil` to use the priority from `Task.currentPriority`.
 	///   - fifoQueue: The queue on which to enqueue the task.
 	///   - isolatedActor: The actor to which the operation is isolated.
