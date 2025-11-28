@@ -180,11 +180,14 @@ struct CancellableQueueTests {
 			await taskAllowedToEnd.wait()
 		}
 
-		// Create additional tasks.
+		// Create a task that spins until cancelled, ensuring task3 remains pending.
 		let task2 = Task(on: systemUnderTest) { _ in
-			await taskAllowedToEnd.wait()
+			while true {
+				try Task.checkCancellation()
+			}
 		}
 
+		// Create a pending task.
 		let task3 = Task(on: systemUnderTest) { _ in
 			await taskAllowedToEnd.wait()
 		}
@@ -196,8 +199,6 @@ struct CancellableQueueTests {
 		systemUnderTest.cancelTasks()
 
 		// Allow tasks to end now that we've cancelled them.
-		await taskAllowedToEnd.signal()
-		await taskAllowedToEnd.signal()
 		await taskAllowedToEnd.signal()
 
 		#expect(task1.isCancelled)
@@ -277,11 +278,14 @@ struct CancellableQueueTests {
 			await taskAllowedToEnd.wait()
 		}
 
-		// Create additional tasks.
+		// Create a task that spins until cancelled, ensuring task3 remains pending.
 		let task2 = Task(on: systemUnderTest) {
-			await taskAllowedToEnd.wait()
+			while true {
+				try Task.checkCancellation()
+			}
 		}
 
+		// Create a pending task.
 		let task3 = Task(on: systemUnderTest) {
 			await taskAllowedToEnd.wait()
 		}
@@ -293,8 +297,6 @@ struct CancellableQueueTests {
 		systemUnderTest.cancelTasks()
 
 		// Allow tasks to end now that we've cancelled them.
-		await taskAllowedToEnd.signal()
-		await taskAllowedToEnd.signal()
 		await taskAllowedToEnd.signal()
 
 		#expect(task1.isCancelled)
