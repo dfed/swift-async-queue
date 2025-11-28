@@ -28,7 +28,7 @@ struct CancellableQueueTests {
 	// MARK: FIFOQueue Tests
 
 	@Test
-	func cancelTasks_fifoQueue_doesNotCancelCompletedTask() async throws {
+	func cancelTasks_fifoQueue_doesNotCancelCompletedTask() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
 
 		// Create a task that completes immediately
@@ -37,7 +37,7 @@ struct CancellableQueueTests {
 		}
 
 		// Wait for the task to complete
-		try await task.value
+		_ = await task.result
 
 		// Now cancel tasks - should have no effect since task already completed
 		systemUnderTest.cancelTasks()
@@ -49,12 +49,10 @@ struct CancellableQueueTests {
 	func cancelTasks_fifoQueue_cancelsCurrentlyExecutingTask() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
 		let taskStarted = Semaphore()
-		let proceedAfterCancel = Semaphore()
 
 		// Create a task that signals when it starts, then waits
 		let task = Task(on: systemUnderTest) {
 			await taskStarted.signal()
-			await proceedAfterCancel.wait()
 		}
 
 		// Wait for the task to start executing
@@ -63,10 +61,6 @@ struct CancellableQueueTests {
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
 
-		// Signal the semaphore to let the task continue
-		await proceedAfterCancel.signal()
-
-		await task.value
 		#expect(task.isCancelled)
 	}
 
@@ -74,13 +68,11 @@ struct CancellableQueueTests {
 	func cancelTasks_fifoQueue_cancelsCurrentlyExecutingAndPendingTasks() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
 		let taskStarted = Semaphore()
-		let proceedAfterCancel = Semaphore()
 		let counter = Counter()
 
-		// Create a task that signals when it starts, then waits
+		// Create a task that signals when it starts
 		let task1 = Task(on: systemUnderTest, isolatedTo: counter) { _ in
 			await taskStarted.signal()
-			await proceedAfterCancel.wait()
 		}
 
 		// Create pending tasks that won't start until the first task completes
@@ -94,19 +86,13 @@ struct CancellableQueueTests {
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
 
-		// Signal the semaphore to let tasks continue
-		await proceedAfterCancel.signal()
-
-		await task1.value
-		await task2.value
-		await task3.value
 		#expect(task1.isCancelled)
 		#expect(task2.isCancelled)
 		#expect(task3.isCancelled)
 	}
 
 	@Test
-	func cancelTasks_fifoQueue_doesNotCancelFutureTasks() async throws {
+	func cancelTasks_fifoQueue_doesNotCancelFutureTasks() {
 		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
 		let counter = Counter()
 
@@ -118,14 +104,13 @@ struct CancellableQueueTests {
 			try doWork()
 		}
 
-		try await task.value
 		#expect(!task.isCancelled)
 	}
 
 	// MARK: ActorQueue Tests
 
 	@Test
-	func cancelTasks_actorQueue_doesNotCancelCompletedTask() async throws {
+	func cancelTasks_actorQueue_doesNotCancelCompletedTask() async {
 		let actorQueue = ActorQueue<Counter>()
 		let counter = Counter()
 		actorQueue.adoptExecutionContext(of: counter)
@@ -137,7 +122,7 @@ struct CancellableQueueTests {
 		}
 
 		// Wait for the task to complete
-		try await task.value
+		_ = await task.result
 
 		// Now cancel tasks - should have no effect since task already completed
 		systemUnderTest.cancelTasks()
@@ -152,12 +137,10 @@ struct CancellableQueueTests {
 		actorQueue.adoptExecutionContext(of: counter)
 		let systemUnderTest = CancellableQueue(underlyingQueue: actorQueue)
 		let taskStarted = Semaphore()
-		let proceedAfterCancel = Semaphore()
 
-		// Create a task that signals when it starts, then waits
+		// Create a task that signals when it starts
 		let task = Task(on: systemUnderTest) { _ in
 			await taskStarted.signal()
-			await proceedAfterCancel.wait()
 		}
 
 		// Wait for the task to start executing
@@ -166,10 +149,6 @@ struct CancellableQueueTests {
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
 
-		// Signal the semaphore to let the task continue
-		await proceedAfterCancel.signal()
-
-		await task.value
 		#expect(task.isCancelled)
 	}
 
@@ -180,12 +159,10 @@ struct CancellableQueueTests {
 		actorQueue.adoptExecutionContext(of: counter)
 		let systemUnderTest = CancellableQueue(underlyingQueue: actorQueue)
 		let taskStarted = Semaphore()
-		let proceedAfterCancel = Semaphore()
 
-		// Create a task that signals when it starts, then waits
+		// Create a task that signals when it starts
 		let task1 = Task(on: systemUnderTest) { _ in
 			await taskStarted.signal()
-			await proceedAfterCancel.wait()
 		}
 
 		// Create pending tasks that won't start until the first task suspends
@@ -199,19 +176,13 @@ struct CancellableQueueTests {
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
 
-		// Signal the semaphore to let tasks continue
-		await proceedAfterCancel.signal()
-
-		await task1.value
-		await task2.value
-		await task3.value
 		#expect(task1.isCancelled)
 		#expect(task2.isCancelled)
 		#expect(task3.isCancelled)
 	}
 
 	@Test
-	func cancelTasks_actorQueue_doesNotCancelFutureTasks() async throws {
+	func cancelTasks_actorQueue_doesNotCancelFutureTasks() {
 		let actorQueue = ActorQueue<Counter>()
 		let counter = Counter()
 		actorQueue.adoptExecutionContext(of: counter)
@@ -225,14 +196,13 @@ struct CancellableQueueTests {
 			try doWork()
 		}
 
-		try await task.value
 		#expect(!task.isCancelled)
 	}
 
 	// MARK: MainActor Queue Tests
 
 	@Test
-	func cancelTasks_mainActorQueue_doesNotCancelCompletedTask() async throws {
+	func cancelTasks_mainActorQueue_doesNotCancelCompletedTask() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: MainActor.queue)
 
 		// Create a task that completes immediately
@@ -241,7 +211,7 @@ struct CancellableQueueTests {
 		}
 
 		// Wait for the task to complete
-		try await task.value
+		_ = await task.result
 
 		// Now cancel tasks - should have no effect since task already completed
 		systemUnderTest.cancelTasks()
@@ -253,12 +223,10 @@ struct CancellableQueueTests {
 	func cancelTasks_mainActorQueue_cancelsCurrentlyExecutingTask() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: MainActor.queue)
 		let taskStarted = Semaphore()
-		let proceedAfterCancel = Semaphore()
 
-		// Create a task that signals when it starts, then waits
+		// Create a task that signals when it starts
 		let task = Task(on: systemUnderTest) {
 			await taskStarted.signal()
-			await proceedAfterCancel.wait()
 		}
 
 		// Wait for the task to start executing
@@ -267,10 +235,6 @@ struct CancellableQueueTests {
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
 
-		// Signal the semaphore to let the task continue
-		await proceedAfterCancel.signal()
-
-		await task.value
 		#expect(task.isCancelled)
 	}
 
@@ -278,12 +242,10 @@ struct CancellableQueueTests {
 	func cancelTasks_mainActorQueue_cancelsCurrentlyExecutingAndPendingTasks() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: MainActor.queue)
 		let taskStarted = Semaphore()
-		let proceedAfterCancel = Semaphore()
 
-		// Create a task that signals when it starts, then waits
+		// Create a task that signals when it starts
 		let task1 = Task(on: systemUnderTest) {
 			await taskStarted.signal()
-			await proceedAfterCancel.wait()
 		}
 
 		// Create pending tasks that won't start until the first task suspends
@@ -297,19 +259,13 @@ struct CancellableQueueTests {
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
 
-		// Signal the semaphore to let tasks continue
-		await proceedAfterCancel.signal()
-
-		await task1.value
-		await task2.value
-		await task3.value
 		#expect(task1.isCancelled)
 		#expect(task2.isCancelled)
 		#expect(task3.isCancelled)
 	}
 
 	@Test
-	func cancelTasks_mainActorQueue_doesNotCancelFutureTasks() async throws {
+	func cancelTasks_mainActorQueue_doesNotCancelFutureTasks() {
 		let systemUnderTest = CancellableQueue(underlyingQueue: MainActor.queue)
 
 		// Cancel tasks before creating any
@@ -320,7 +276,6 @@ struct CancellableQueueTests {
 			try doWork()
 		}
 
-		try await task.value
 		#expect(!task.isCancelled)
 	}
 
