@@ -49,10 +49,12 @@ struct CancellableQueueTests {
 	func cancelTasks_fifoQueue_cancelsCurrentlyExecutingTask() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
 		let taskStarted = Semaphore()
+		let taskAllowedToEnd = Semaphore()
 
 		// Create a task that signals when it starts, then waits
 		let task = Task(on: systemUnderTest) {
 			await taskStarted.signal()
+			await taskAllowedToEnd.wait()
 		}
 
 		// Wait for the task to start executing
@@ -61,6 +63,9 @@ struct CancellableQueueTests {
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
 
+		// Allow the task to end now that we've cancelled it.
+		await taskAllowedToEnd.signal()
+
 		#expect(task.isCancelled)
 	}
 
@@ -68,11 +73,13 @@ struct CancellableQueueTests {
 	func cancelTasks_fifoQueue_cancelsCurrentlyExecutingAndPendingTasks() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
 		let taskStarted = Semaphore()
+		let taskAllowedToEnd = Semaphore()
 		let counter = Counter()
 
 		// Create a task that signals when it starts
 		let task1 = Task(on: systemUnderTest, isolatedTo: counter) { _ in
 			await taskStarted.signal()
+			await taskAllowedToEnd.wait()
 		}
 
 		// Create pending tasks that won't start until the first task completes
@@ -85,6 +92,9 @@ struct CancellableQueueTests {
 
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
+
+		// Allow the task to end now that we've cancelled it.
+		await taskAllowedToEnd.signal()
 
 		#expect(task1.isCancelled)
 		#expect(task2.isCancelled)
