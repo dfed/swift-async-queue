@@ -51,24 +51,26 @@ struct CancellableQueueTests {
 	@Test
 	func cancelTasks_fifoQueue_cancelsCurrentlyExecutingTask() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
-		let semaphore = Semaphore()
+		let taskStarted = Semaphore()
+		let proceedAfterCancel = Semaphore()
 		let expectation = Expectation()
 
-		// Create a task that waits on a semaphore
+		// Create a task that signals when it starts, then waits
 		Task(on: systemUnderTest) {
-			await semaphore.wait()
+			await taskStarted.signal()
+			await proceedAfterCancel.wait()
 			#expect(Task.isCancelled)
 			expectation.fulfill()
 		}
 
-		// Give the task time to start executing and reach the semaphore
-		try? await Task.sleep(nanoseconds: 10_000_000)
+		// Wait for the task to start executing
+		await taskStarted.wait()
 
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
 
 		// Signal the semaphore to let the task continue
-		await semaphore.signal()
+		await proceedAfterCancel.signal()
 
 		await expectation.fulfillment(withinSeconds: 30)
 	}
@@ -76,13 +78,15 @@ struct CancellableQueueTests {
 	@Test
 	func cancelTasks_fifoQueue_cancelsCurrentlyExecutingAndPendingTasks() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
-		let semaphore = Semaphore()
+		let taskStarted = Semaphore()
+		let proceedAfterCancel = Semaphore()
 		let counter = Counter()
 		let expectation = Expectation(expectedCount: 3)
 
-		// Create a task that waits on a semaphore (will be executing)
+		// Create a task that signals when it starts, then waits
 		Task(on: systemUnderTest, isolatedTo: counter) { _ in
-			await semaphore.wait()
+			await taskStarted.signal()
+			await proceedAfterCancel.wait()
 			#expect(Task.isCancelled)
 			expectation.fulfill()
 		}
@@ -98,14 +102,14 @@ struct CancellableQueueTests {
 			expectation.fulfill()
 		}
 
-		// Give the first task time to start executing
-		try? await Task.sleep(nanoseconds: 10_000_000)
+		// Wait for the first task to start executing
+		await taskStarted.wait()
 
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
 
 		// Signal the semaphore to let tasks continue
-		await semaphore.signal()
+		await proceedAfterCancel.signal()
 
 		await expectation.fulfillment(withinSeconds: 30)
 	}
@@ -161,24 +165,26 @@ struct CancellableQueueTests {
 		let counter = Counter()
 		actorQueue.adoptExecutionContext(of: counter)
 		let systemUnderTest = CancellableQueue(underlyingQueue: actorQueue)
-		let semaphore = Semaphore()
+		let taskStarted = Semaphore()
+		let proceedAfterCancel = Semaphore()
 		let expectation = Expectation()
 
-		// Create a task that waits on a semaphore
+		// Create a task that signals when it starts, then waits
 		Task(on: systemUnderTest) { _ in
-			await semaphore.wait()
+			await taskStarted.signal()
+			await proceedAfterCancel.wait()
 			#expect(Task.isCancelled)
 			expectation.fulfill()
 		}
 
-		// Give the task time to start executing and reach the semaphore
-		try? await Task.sleep(nanoseconds: 10_000_000)
+		// Wait for the task to start executing
+		await taskStarted.wait()
 
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
 
 		// Signal the semaphore to let the task continue
-		await semaphore.signal()
+		await proceedAfterCancel.signal()
 
 		await expectation.fulfillment(withinSeconds: 30)
 	}
@@ -189,12 +195,14 @@ struct CancellableQueueTests {
 		let counter = Counter()
 		actorQueue.adoptExecutionContext(of: counter)
 		let systemUnderTest = CancellableQueue(underlyingQueue: actorQueue)
-		let semaphore = Semaphore()
+		let taskStarted = Semaphore()
+		let proceedAfterCancel = Semaphore()
 		let expectation = Expectation(expectedCount: 3)
 
-		// Create a task that waits on a semaphore (will be executing)
+		// Create a task that signals when it starts, then waits
 		Task(on: systemUnderTest) { _ in
-			await semaphore.wait()
+			await taskStarted.signal()
+			await proceedAfterCancel.wait()
 			#expect(Task.isCancelled)
 			expectation.fulfill()
 		}
@@ -210,14 +218,14 @@ struct CancellableQueueTests {
 			expectation.fulfill()
 		}
 
-		// Give the first task time to start executing
-		try? await Task.sleep(nanoseconds: 10_000_000)
+		// Wait for the first task to start executing
+		await taskStarted.wait()
 
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
 
 		// Signal the semaphore to let tasks continue
-		await semaphore.signal()
+		await proceedAfterCancel.signal()
 
 		await expectation.fulfillment(withinSeconds: 30)
 	}
@@ -269,24 +277,26 @@ struct CancellableQueueTests {
 	@Test
 	func cancelTasks_mainActorQueue_cancelsCurrentlyExecutingTask() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: MainActor.queue)
-		let semaphore = Semaphore()
+		let taskStarted = Semaphore()
+		let proceedAfterCancel = Semaphore()
 		let expectation = Expectation()
 
-		// Create a task that waits on a semaphore
+		// Create a task that signals when it starts, then waits
 		Task(on: systemUnderTest) {
-			await semaphore.wait()
+			await taskStarted.signal()
+			await proceedAfterCancel.wait()
 			#expect(Task.isCancelled)
 			expectation.fulfill()
 		}
 
-		// Give the task time to start executing and reach the semaphore
-		try? await Task.sleep(nanoseconds: 10_000_000)
+		// Wait for the task to start executing
+		await taskStarted.wait()
 
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
 
 		// Signal the semaphore to let the task continue
-		await semaphore.signal()
+		await proceedAfterCancel.signal()
 
 		await expectation.fulfillment(withinSeconds: 30)
 	}
@@ -294,12 +304,14 @@ struct CancellableQueueTests {
 	@Test
 	func cancelTasks_mainActorQueue_cancelsCurrentlyExecutingAndPendingTasks() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: MainActor.queue)
-		let semaphore = Semaphore()
+		let taskStarted = Semaphore()
+		let proceedAfterCancel = Semaphore()
 		let expectation = Expectation(expectedCount: 3)
 
-		// Create a task that waits on a semaphore (will be executing)
+		// Create a task that signals when it starts, then waits
 		Task(on: systemUnderTest) {
-			await semaphore.wait()
+			await taskStarted.signal()
+			await proceedAfterCancel.wait()
 			#expect(Task.isCancelled)
 			expectation.fulfill()
 		}
@@ -315,14 +327,14 @@ struct CancellableQueueTests {
 			expectation.fulfill()
 		}
 
-		// Give the first task time to start executing
-		try? await Task.sleep(nanoseconds: 10_000_000)
+		// Wait for the first task to start executing
+		await taskStarted.wait()
 
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
 
 		// Signal the semaphore to let tasks continue
-		await semaphore.signal()
+		await proceedAfterCancel.signal()
 
 		await expectation.fulfillment(withinSeconds: 30)
 	}
