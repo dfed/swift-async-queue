@@ -27,7 +27,7 @@ public final class FIFOQueue: Sendable {
 	// MARK: Initialization
 
 	/// Instantiates a FIFO queue.
-	/// - Parameter name: Human readable name of the task.
+	/// - Parameter name: Human readable name of the queue.
 	/// - Parameter priority: The baseline priority of the tasks added to the asynchronous queue.
 	public init(name: String? = nil, priority: TaskPriority? = nil) {
 		let (taskStream, taskStreamContinuation) = AsyncStream<FIFOTask>.makeStream()
