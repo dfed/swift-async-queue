@@ -171,39 +171,28 @@ struct CancellableQueueTests {
 		let counter = Counter()
 		actorQueue.adoptExecutionContext(of: counter)
 		let systemUnderTest = CancellableQueue(underlyingQueue: actorQueue)
-		let task1Started = Semaphore()
-		let task2Started = Semaphore()
-		let task3Started = Semaphore()
-		let tasksAllowedToEnd = Semaphore()
+		let taskStarted = Semaphore()
+		let taskAllowedToEnd = Semaphore()
 
-		// Create tasks that signal when they start, then wait.
+		// Create a task that signals when it starts, then waits.
 		let task1 = Task(on: systemUnderTest) { _ in
-			await task1Started.signal()
-			await tasksAllowedToEnd.wait()
+			await taskStarted.signal()
+			await taskAllowedToEnd.wait()
 		}
 
-		let task2 = Task(on: systemUnderTest) { _ in
-			await task2Started.signal()
-			await tasksAllowedToEnd.wait()
-		}
+		// Create additional tasks.
+		let task2 = Task(on: systemUnderTest) { _ in }
 
-		let task3 = Task(on: systemUnderTest) { _ in
-			await task3Started.signal()
-			await tasksAllowedToEnd.wait()
-		}
+		let task3 = Task(on: systemUnderTest) { _ in }
 
-		// Wait for all tasks to start executing.
-		await task1Started.wait()
-		await task2Started.wait()
-		await task3Started.wait()
+		// Wait for the first task to start executing.
+		await taskStarted.wait()
 
 		// Cancel all tasks.
 		systemUnderTest.cancelTasks()
 
-		// Allow tasks to end now that we've cancelled them.
-		await tasksAllowedToEnd.signal()
-		await tasksAllowedToEnd.signal()
-		await tasksAllowedToEnd.signal()
+		// Allow the task to end now that we've cancelled it.
+		await taskAllowedToEnd.signal()
 
 		#expect(task1.isCancelled)
 		#expect(task2.isCancelled)
@@ -273,39 +262,28 @@ struct CancellableQueueTests {
 	@Test
 	func cancelTasks_mainActorQueue_cancelsCurrentlyExecutingAndPendingTasks() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: MainActor.queue)
-		let task1Started = Semaphore()
-		let task2Started = Semaphore()
-		let task3Started = Semaphore()
-		let tasksAllowedToEnd = Semaphore()
+		let taskStarted = Semaphore()
+		let taskAllowedToEnd = Semaphore()
 
-		// Create tasks that signal when they start, then wait.
+		// Create a task that signals when it starts, then waits.
 		let task1 = Task(on: systemUnderTest) {
-			await task1Started.signal()
-			await tasksAllowedToEnd.wait()
+			await taskStarted.signal()
+			await taskAllowedToEnd.wait()
 		}
 
-		let task2 = Task(on: systemUnderTest) {
-			await task2Started.signal()
-			await tasksAllowedToEnd.wait()
-		}
+		// Create additional tasks.
+		let task2 = Task(on: systemUnderTest) {}
 
-		let task3 = Task(on: systemUnderTest) {
-			await task3Started.signal()
-			await tasksAllowedToEnd.wait()
-		}
+		let task3 = Task(on: systemUnderTest) {}
 
-		// Wait for all tasks to start executing.
-		await task1Started.wait()
-		await task2Started.wait()
-		await task3Started.wait()
+		// Wait for the first task to start executing.
+		await taskStarted.wait()
 
 		// Cancel all tasks.
 		systemUnderTest.cancelTasks()
 
-		// Allow tasks to end now that we've cancelled them.
-		await tasksAllowedToEnd.signal()
-		await tasksAllowedToEnd.signal()
-		await tasksAllowedToEnd.signal()
+		// Allow the task to end now that we've cancelled it.
+		await taskAllowedToEnd.signal()
 
 		#expect(task1.isCancelled)
 		#expect(task2.isCancelled)
