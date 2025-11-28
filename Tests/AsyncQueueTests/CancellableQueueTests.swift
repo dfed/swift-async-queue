@@ -147,10 +147,12 @@ struct CancellableQueueTests {
 		actorQueue.adoptExecutionContext(of: counter)
 		let systemUnderTest = CancellableQueue(underlyingQueue: actorQueue)
 		let taskStarted = Semaphore()
+		let taskAllowedToEnd = Semaphore()
 
-		// Create a task that signals when it starts
+		// Create a task that signals when it starts, then waits
 		let task = Task(on: systemUnderTest) { _ in
 			await taskStarted.signal()
+			await taskAllowedToEnd.wait()
 		}
 
 		// Wait for the task to start executing
@@ -158,6 +160,9 @@ struct CancellableQueueTests {
 
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
+
+		// Allow the task to end now that we've cancelled it.
+		await taskAllowedToEnd.signal()
 
 		#expect(task.isCancelled)
 	}
@@ -169,10 +174,12 @@ struct CancellableQueueTests {
 		actorQueue.adoptExecutionContext(of: counter)
 		let systemUnderTest = CancellableQueue(underlyingQueue: actorQueue)
 		let taskStarted = Semaphore()
+		let taskAllowedToEnd = Semaphore()
 
-		// Create a task that signals when it starts
+		// Create a task that signals when it starts, then waits
 		let task1 = Task(on: systemUnderTest) { _ in
 			await taskStarted.signal()
+			await taskAllowedToEnd.wait()
 		}
 
 		// Create pending tasks that won't start until the first task suspends
@@ -185,6 +192,9 @@ struct CancellableQueueTests {
 
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
+
+		// Allow the task to end now that we've cancelled it.
+		await taskAllowedToEnd.signal()
 
 		#expect(task1.isCancelled)
 		#expect(task2.isCancelled)
@@ -233,10 +243,12 @@ struct CancellableQueueTests {
 	func cancelTasks_mainActorQueue_cancelsCurrentlyExecutingTask() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: MainActor.queue)
 		let taskStarted = Semaphore()
+		let taskAllowedToEnd = Semaphore()
 
-		// Create a task that signals when it starts
+		// Create a task that signals when it starts, then waits
 		let task = Task(on: systemUnderTest) {
 			await taskStarted.signal()
+			await taskAllowedToEnd.wait()
 		}
 
 		// Wait for the task to start executing
@@ -245,6 +257,9 @@ struct CancellableQueueTests {
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
 
+		// Allow the task to end now that we've cancelled it.
+		await taskAllowedToEnd.signal()
+
 		#expect(task.isCancelled)
 	}
 
@@ -252,10 +267,12 @@ struct CancellableQueueTests {
 	func cancelTasks_mainActorQueue_cancelsCurrentlyExecutingAndPendingTasks() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: MainActor.queue)
 		let taskStarted = Semaphore()
+		let taskAllowedToEnd = Semaphore()
 
-		// Create a task that signals when it starts
+		// Create a task that signals when it starts, then waits
 		let task1 = Task(on: systemUnderTest) {
 			await taskStarted.signal()
+			await taskAllowedToEnd.wait()
 		}
 
 		// Create pending tasks that won't start until the first task suspends
@@ -268,6 +285,9 @@ struct CancellableQueueTests {
 
 		// Cancel all tasks
 		systemUnderTest.cancelTasks()
+
+		// Allow the task to end now that we've cancelled it.
+		await taskAllowedToEnd.signal()
 
 		#expect(task1.isCancelled)
 		#expect(task2.isCancelled)
