@@ -55,7 +55,7 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
 	// MARK: Initialization
 
 	/// Instantiates an actor queue.
-	/// - Parameter name: Human readable name of the task.
+	/// - Parameter name: Human readable name of the queue.
 	public init(name: String? = nil) {
 		let (taskStream, taskStreamContinuation) = AsyncStream<ActorTask>.makeStream()
 		self.taskStreamContinuation = taskStreamContinuation
