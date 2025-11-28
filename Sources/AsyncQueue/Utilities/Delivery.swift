@@ -43,11 +43,12 @@ actor Delivery<Success: Sendable, Failure: Error> {
 	func execute<ActorType: Actor>(
 		_ operation: sending @escaping (isolated ActorType) async -> Void,
 		in context: isolated ActorType,
+		name: String? = nil,
 		priority: TaskPriority? = nil
 	) -> Task<Void, Never> {
 		// In Swift 6, a `Task` enqueued from an actor begins executing immediately on that actor.
 		// Since we're running on our actor's context already, we can just dispatch a Task to get first-enqueued-first-start task execution.
-		let task = Task(priority: priority) {
+		let task = Task(name: name, priority: priority) {
 			await operation(context)
 		}
 		taskContainer.withLock {

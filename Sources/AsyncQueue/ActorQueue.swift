@@ -147,10 +147,13 @@ extension Task {
 	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
+	///   - name: Human readable name of the task.
+	///   - priority: The priority of the operation task.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init<ActorType: Actor>(
+		name: String? = nil,
 		priority: TaskPriority? = nil,
 		on actorQueue: ActorQueue<ActorType>,
 		operation: @Sendable @escaping (isolated ActorType) async -> Success
@@ -163,11 +166,11 @@ extension Task {
 				await semaphore.wait()
 				delivery.execute({ @Sendable executionContext in
 					await delivery.sendValue(operation(executionContext))
-				}, in: executionContext, priority: priority)
+				}, in: executionContext, name: name, priority: priority)
 			}
 		)
 		actorQueue.taskStreamContinuation.yield(task)
-		self.init(priority: priority) {
+		self.init(name: name, priority: priority) {
 			await withTaskCancellationHandler(
 				operation: {
 					await semaphore.signal()
@@ -200,12 +203,14 @@ extension Task {
 	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
+	///   - name: Human readable name of the task.
 	///   - priority: The priority of the task.
 	///     Pass `nil` to use the priority from `Task.currentPriority`.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init<ActorType: Actor>(
+		name: String? = nil,
 		priority: TaskPriority? = nil,
 		on actorQueue: ActorQueue<ActorType>,
 		operation: @escaping @Sendable (isolated ActorType) async throws -> Success
@@ -222,11 +227,11 @@ extension Task {
 					} catch {
 						await delivery.sendFailure(error)
 					}
-				}, in: executionContext, priority: priority)
+				}, in: executionContext, name: name, priority: priority)
 			}
 		)
 		actorQueue.taskStreamContinuation.yield(task)
-		self.init(priority: priority) {
+		self.init(name: name, priority: priority) {
 			try await withTaskCancellationHandler(
 				operation: {
 					await semaphore.signal()
@@ -259,12 +264,14 @@ extension Task {
 	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
+	///   - name: Human readable name of the task.
 	///   - priority: The priority of the task.
 	///     Pass `nil` to use the priority from `Task.currentPriority`.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init(
+		name: String? = nil,
 		priority: TaskPriority? = nil,
 		on actorQueue: ActorQueue<MainActor>,
 		operation: @MainActor @escaping () async -> Success
@@ -277,11 +284,11 @@ extension Task {
 				await semaphore.wait()
 				delivery.execute({ @Sendable executionContext in
 					await delivery.sendValue(operation())
-				}, in: executionContext, priority: priority)
+				}, in: executionContext, name: name, priority: priority)
 			}
 		)
 		actorQueue.taskStreamContinuation.yield(task)
-		self.init(priority: priority) {
+		self.init(name: name, priority: priority) {
 			await withTaskCancellationHandler(
 				operation: {
 					await semaphore.signal()
@@ -314,12 +321,14 @@ extension Task {
 	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
+	///   - name: Human readable name of the task.
 	///   - priority: The priority of the task.
 	///     Pass `nil` to use the priority from `Task.currentPriority`.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init(
+		name: String? = nil,
 		priority: TaskPriority? = nil,
 		on actorQueue: ActorQueue<MainActor>,
 		operation: @escaping @MainActor () async throws -> Success
@@ -336,11 +345,11 @@ extension Task {
 					} catch {
 						await delivery.sendFailure(error)
 					}
-				}, in: executionContext, priority: priority)
+				}, in: executionContext, name: name, priority: priority)
 			}
 		)
 		actorQueue.taskStreamContinuation.yield(task)
-		self.init(priority: priority) {
+		self.init(name: name, priority: priority) {
 			try await withTaskCancellationHandler(
 				operation: {
 					await semaphore.signal()
