@@ -40,7 +40,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v5
     - name: Select Xcode Version
-      run: sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
+      run: sudo xcode-select --switch /Applications/Xcode_26.1.1.app/Contents/Developer
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL

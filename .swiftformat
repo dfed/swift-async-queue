@@ -1,5 +1,7 @@
 # format options
 --indent tab
+--tab-width 4
+--smart-tabs disabled
 --modifierorder nonisolated,open,public,internal,fileprivate,private,private(set),final,override,required,convenience
 --ranges no-space
 --extensionacl on-declarations
@@ -8,6 +10,7 @@
 --storedvarattrs same-line
 --hexgrouping none
 --decimalgrouping 3
+--trailing-commas always
 
 # rules
 --enable isEmpty
@@ -17,4 +20,4 @@
 --disable blankLineAfterSwitchCase
 
 # global
---swiftversion 6.0
+--swiftversion 6.2

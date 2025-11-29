@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -12,5 +12,5 @@ let package = Package(
 	dependencies: [
 		.package(url: "https://github.com/nicklockwood/SwiftFormat", from: "0.56.1"),
 	],
-	targets: []
+	targets: [],
 )

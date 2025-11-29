@@ -76,7 +76,7 @@ extension Task {
 	public init<ActorType: Actor>(
 		priority: TaskPriority? = nil,
 		on actorQueue: CancellableQueue<ActorQueue<ActorType>>,
-		operation: @Sendable @escaping (isolated ActorType) async -> Success
+		operation: @Sendable @escaping (isolated ActorType) async -> Success,
 	) where Failure == Never {
 		let identifier = UUID()
 		self.init(priority: priority, on: actorQueue.underlyingQueue, operation: {
@@ -116,7 +116,7 @@ extension Task {
 	public init<ActorType: Actor>(
 		priority: TaskPriority? = nil,
 		on actorQueue: CancellableQueue<ActorQueue<ActorType>>,
-		operation: @escaping @Sendable (isolated ActorType) async throws -> Success
+		operation: @escaping @Sendable (isolated ActorType) async throws -> Success,
 	) where Failure == any Error {
 		let identifier = UUID()
 		self.init(priority: priority, on: actorQueue.underlyingQueue, operation: {
@@ -156,7 +156,7 @@ extension Task {
 	public init(
 		priority: TaskPriority? = nil,
 		on actorQueue: CancellableQueue<ActorQueue<MainActor>>,
-		operation: @MainActor @escaping () async -> Success
+		operation: @MainActor @escaping () async -> Success,
 	) where Failure == Never {
 		let identifier = UUID()
 		self.init(priority: priority, on: actorQueue.underlyingQueue, operation: {
@@ -196,7 +196,7 @@ extension Task {
 	public init(
 		priority: TaskPriority? = nil,
 		on actorQueue: CancellableQueue<ActorQueue<MainActor>>,
-		operation: @escaping @MainActor () async throws -> Success
+		operation: @escaping @MainActor () async throws -> Success,
 	) where Failure == any Error {
 		let identifier = UUID()
 		self.init(priority: priority, on: actorQueue.underlyingQueue, operation: {
@@ -233,7 +233,7 @@ extension Task {
 	@discardableResult
 	public init(
 		on fifoQueue: CancellableQueue<FIFOQueue>,
-		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async -> Success
+		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async -> Success,
 	) where Failure == Never {
 		let identifier = UUID()
 		self.init(on: fifoQueue.underlyingQueue, operation: {
@@ -270,7 +270,7 @@ extension Task {
 	@discardableResult
 	public init(
 		on fifoQueue: CancellableQueue<FIFOQueue>,
-		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async throws -> Success
+		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async throws -> Success,
 	) where Failure == any Error {
 		let identifier = UUID()
 		self.init(on: fifoQueue.underlyingQueue, operation: {
@@ -312,7 +312,7 @@ extension Task {
 		priority: TaskPriority? = nil,
 		on fifoQueue: CancellableQueue<FIFOQueue>,
 		isolatedTo isolatedActor: ActorType,
-		operation: @Sendable @escaping (isolated ActorType) async -> Success
+		operation: @Sendable @escaping (isolated ActorType) async -> Success,
 	) where Failure == Never {
 		let identifier = UUID()
 		self.init(priority: priority, on: fifoQueue.underlyingQueue, isolatedTo: isolatedActor, operation: {
@@ -354,7 +354,7 @@ extension Task {
 		priority: TaskPriority? = nil,
 		on fifoQueue: CancellableQueue<FIFOQueue>,
 		isolatedTo isolatedActor: ActorType,
-		operation: @Sendable @escaping (isolated ActorType) async throws -> Success
+		operation: @Sendable @escaping (isolated ActorType) async throws -> Success,
 	) where Failure == any Error {
 		let identifier = UUID()
 		self.init(priority: priority, on: fifoQueue.underlyingQueue, isolatedTo: isolatedActor, operation: {
