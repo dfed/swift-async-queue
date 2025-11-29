@@ -26,17 +26,17 @@ public actor Expectation {
 	// MARK: Initialization
 
 	public init(
-		expectedCount: UInt = 1
+		expectedCount: UInt = 1,
 	) {
 		self.init(
 			expectedCount: expectedCount,
-			expect: { #expect($0, $1, sourceLocation: $2) }
+			expect: { #expect($0, $1, sourceLocation: $2) },
 		)
 	}
 
 	init(
 		expectedCount: UInt,
-		expect: @escaping (Bool, Comment?, SourceLocation) -> Void
+		expect: @escaping (Bool, Comment?, SourceLocation) -> Void,
 	) {
 		self.expectedCount = expectedCount
 		self.expect = expect
@@ -49,7 +49,7 @@ public actor Expectation {
 		filePath: String = #filePath,
 		fileID: String = #fileID,
 		line: Int = #line,
-		column: Int = #column
+		column: Int = #column,
 	) async {
 		guard !isComplete else { return }
 		let wait = Task {
@@ -58,7 +58,7 @@ public actor Expectation {
 				fileID: fileID,
 				filePath: filePath,
 				line: line,
-				column: column
+				column: column,
 			))
 		}
 		waits.append(wait)
@@ -66,19 +66,18 @@ public actor Expectation {
 	}
 
 	@discardableResult
-	nonisolated
-	public func fulfill(
+	nonisolated public func fulfill(
 		filePath: String = #filePath,
 		fileID: String = #fileID,
 		line: Int = #line,
-		column: Int = #column
+		column: Int = #column,
 	) -> Task<Void, Never> {
 		Task {
 			await self._fulfill(
 				filePath: filePath,
 				fileID: fileID,
 				line: line,
-				column: column
+				column: column,
 			)
 		}
 	}
@@ -98,7 +97,7 @@ public actor Expectation {
 		filePath: String,
 		fileID: String,
 		line: Int,
-		column: Int
+		column: Int,
 	) {
 		fulfillCount += 1
 		guard isComplete else { return }
@@ -109,8 +108,8 @@ public actor Expectation {
 				fileID: fileID,
 				filePath: filePath,
 				line: line,
-				column: column
-			)
+				column: column,
+			),
 		)
 		for wait in waits {
 			wait.cancel()

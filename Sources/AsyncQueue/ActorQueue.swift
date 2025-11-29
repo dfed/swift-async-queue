@@ -103,7 +103,7 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
 	fileprivate struct ActorTask: Sendable {
 		init(
 			executionContext: ActorType,
-			task: @escaping @Sendable (isolated ActorType) async -> Void
+			task: @escaping @Sendable (isolated ActorType) async -> Void,
 		) {
 			self.executionContext = executionContext
 			self.task = task
@@ -156,7 +156,7 @@ extension Task {
 		name: String? = nil,
 		priority: TaskPriority? = nil,
 		on actorQueue: ActorQueue<ActorType>,
-		operation: @Sendable @escaping (isolated ActorType) async -> Success
+		operation: @Sendable @escaping (isolated ActorType) async -> Success,
 	) where Failure == Never {
 		let delivery = Delivery<Success, Failure>()
 		let semaphore = Semaphore()
@@ -167,7 +167,7 @@ extension Task {
 				delivery.execute({ @Sendable executionContext in
 					await delivery.sendValue(operation(executionContext))
 				}, in: executionContext, name: name, priority: priority)
-			}
+			},
 		)
 		actorQueue.taskStreamContinuation.yield(task)
 		self.init(name: name, priority: priority) {
@@ -176,7 +176,7 @@ extension Task {
 					await semaphore.signal()
 					return await delivery.getValue()
 				},
-				onCancel: delivery.cancel
+				onCancel: delivery.cancel,
 			)
 		}
 	}
@@ -213,7 +213,7 @@ extension Task {
 		name: String? = nil,
 		priority: TaskPriority? = nil,
 		on actorQueue: ActorQueue<ActorType>,
-		operation: @escaping @Sendable (isolated ActorType) async throws -> Success
+		operation: @escaping @Sendable (isolated ActorType) async throws -> Success,
 	) where Failure == any Error {
 		let delivery = Delivery<Success, Failure>()
 		let semaphore = Semaphore()
@@ -228,7 +228,7 @@ extension Task {
 						await delivery.sendFailure(error)
 					}
 				}, in: executionContext, name: name, priority: priority)
-			}
+			},
 		)
 		actorQueue.taskStreamContinuation.yield(task)
 		self.init(name: name, priority: priority) {
@@ -237,7 +237,7 @@ extension Task {
 					await semaphore.signal()
 					return try await delivery.getValue()
 				},
-				onCancel: delivery.cancel
+				onCancel: delivery.cancel,
 			)
 		}
 	}
@@ -274,7 +274,7 @@ extension Task {
 		name: String? = nil,
 		priority: TaskPriority? = nil,
 		on actorQueue: ActorQueue<MainActor>,
-		operation: @MainActor @escaping () async -> Success
+		operation: @MainActor @escaping () async -> Success,
 	) where Failure == Never {
 		let delivery = Delivery<Success, Failure>()
 		let semaphore = Semaphore()
@@ -285,7 +285,7 @@ extension Task {
 				delivery.execute({ @Sendable executionContext in
 					await delivery.sendValue(operation())
 				}, in: executionContext, name: name, priority: priority)
-			}
+			},
 		)
 		actorQueue.taskStreamContinuation.yield(task)
 		self.init(name: name, priority: priority) {
@@ -294,7 +294,7 @@ extension Task {
 					await semaphore.signal()
 					return await delivery.getValue()
 				},
-				onCancel: delivery.cancel
+				onCancel: delivery.cancel,
 			)
 		}
 	}
@@ -331,7 +331,7 @@ extension Task {
 		name: String? = nil,
 		priority: TaskPriority? = nil,
 		on actorQueue: ActorQueue<MainActor>,
-		operation: @escaping @MainActor () async throws -> Success
+		operation: @escaping @MainActor () async throws -> Success,
 	) where Failure == any Error {
 		let delivery = Delivery<Success, Failure>()
 		let semaphore = Semaphore()
@@ -346,7 +346,7 @@ extension Task {
 						await delivery.sendFailure(error)
 					}
 				}, in: executionContext, name: name, priority: priority)
-			}
+			},
 		)
 		actorQueue.taskStreamContinuation.yield(task)
 		self.init(name: name, priority: priority) {
@@ -355,7 +355,7 @@ extension Task {
 					await semaphore.signal()
 					return try await delivery.getValue()
 				},
-				onCancel: delivery.cancel
+				onCancel: delivery.cancel,
 			)
 		}
 	}

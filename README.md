@@ -164,6 +164,75 @@ func mainActorQueueOrdering() async {
 }
 ```
 
+### Cancelling all executing and pending tasks
+
+Use a `CancellableQueue` to wrap a `FIFOQueue` or `ActorQueue` when you need the ability to cancel all currently executing and pending tasks at once. This is useful for scenarios like cancelling in-flight network requests when a view disappears, or abandoning a batch of operations when a user initiates a new action.
+
+A `CancellableQueue` wraps an underlying queue and tracks all tasks enqueued on it. Calling `cancelTasks()` will cancel both the currently executing task and any tasks waiting in the queue. Tasks that have already completed are unaffected, and tasks enqueued after `cancelTasks()` is called will execute normally.
+
+```swift
+@Test
+func cancellableQueueExample() async {
+    actor ImageLoader {
+        init() {
+            let actorQueue = ActorQueue<ImageLoader>()
+            cancellableQueue = CancellableQueue(underlyingQueue: actorQueue)
+            actorQueue.adoptExecutionContext(of: self)
+        }
+
+        nonisolated
+        func loadImage(from url: URL) -> Task<UIImage?, Never> {
+            Task(on: cancellableQueue) { myself in
+                guard let image = try await myself.fetchImage(from: url) else { return nil }
+                try Task.checkCancellation()
+                return myself.processImage(image)
+            }
+        }
+
+        nonisolated
+        func cancelAllLoads() {
+            // Cancels the currently loading image and any queued load requests.
+            cancellableQueue.cancelTasks()
+        }
+
+        private func fetchImage(from url: URL) async throws -> UIImage? {
+            // Fetch image implementation…
+        }
+
+        private func processImage(_ image: UIImage) async -> UIImage {
+            // Expensive image processing implementation…
+        }
+
+        private let cancellableQueue: CancellableQueue<ActorQueue<ImageLoader>>
+    }
+
+    let loader = ImageLoader()
+
+    // Enqueue several image load tasks.
+    let task1 = loader.loadImage(from: URL(string: "https://example.com/1.png")!)
+    let task2 = loader.loadImage(from: URL(string: "https://example.com/2.png")!)
+    let task3 = loader.loadImage(from: URL(string: "https://example.com/3.png")!)
+
+    // Cancel all pending and executing loads.
+    loader.cancelAllLoads()
+
+    // All tasks are now cancelled.
+    #expect(task1.isCancelled)
+    #expect(task2.isCancelled)
+    #expect(task3.isCancelled)
+}
+```
+
+A `CancellableQueue` can also wrap a `FIFOQueue` for FIFO-ordered cancellable tasks:
+```swift
+let cancellableQueue = CancellableQueue(underlyingQueue: FIFOQueue())
+
+Task(on: cancellableQueue) {
+    // This work can be cancelled via cancellableQueue.cancelTasks()
+    await performWork()
+}
+```
+
 ## Installation
 
 ### Swift Package Manager
@@ -172,7 +241,7 @@ To install swift-async-queue in your project with [Swift Package Manager](https:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/dfed/swift-async-queue", from: "0.7.0"),
+    .package(url: "https://github.com/dfed/swift-async-queue", from: "1.0.0"),
 ]
 ```
 
@@ -181,7 +250,7 @@ dependencies: [
 To install swift-async-queue in your project with [CocoaPods](https://blog.cocoapods.org/CocoaPods-Specs-Repo), add the following to your `Podfile`:
 
 ```
-pod 'AsyncQueue', '~> 0.7.0'
+pod 'AsyncQueue', '~> 1.0.0'
 ```
 
 ## Contributing

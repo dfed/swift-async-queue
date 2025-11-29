@@ -31,8 +31,7 @@ actor Delivery<Success: Sendable, Failure: Error> {
 		self.failure = failure
 	}
 
-	nonisolated
-	func cancel() {
+	nonisolated func cancel() {
 		taskContainer.withLock {
 			$0.isCancelled = true
 			$0.task?.cancel()
@@ -44,7 +43,7 @@ actor Delivery<Success: Sendable, Failure: Error> {
 		_ operation: sending @escaping (isolated ActorType) async -> Void,
 		in context: isolated ActorType,
 		name: String? = nil,
-		priority: TaskPriority? = nil
+		priority: TaskPriority? = nil,
 	) -> Task<Void, Never> {
 		// In Swift 6, a `Task` enqueued from an actor begins executing immediately on that actor.
 		// Since we're running on our actor's context already, we can just dispatch a Task to get first-enqueued-first-start task execution.
