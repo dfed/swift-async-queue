@@ -25,8 +25,6 @@ import Foundation
 /// A queue wrapper that enables cancelling all currently executing and pending tasks.
 ///
 /// A `CancellableQueue` wraps either a `FIFOQueue` or an `ActorQueue` and tracks all tasks enqueued on it.
-/// Calling `cancelTasks()` will cancel both the currently executing task and any tasks waiting in the queue.
-/// Tasks that have already completed are unaffected, and tasks enqueued after `cancelTasks()` is called will execute normally.
 public final class CancellableQueue<UnderlyingQueue: Sendable>: Sendable {
 	// MARK: Initialization
 
@@ -38,7 +36,7 @@ public final class CancellableQueue<UnderlyingQueue: Sendable>: Sendable {
 
 	// MARK: Public
 
-	/// Cancels the currently executing task, as well as any task currently pending in the queue.
+	/// Cancels currently executing and pending tasks. Does not affect tasks enqueued after this method is called.
 	public func cancelTasks() {
 		taskIdentifierToCancelMap.withLock {
 			$0.values.forEach { $0() }
