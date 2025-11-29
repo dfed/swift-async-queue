@@ -39,7 +39,7 @@ jobs:
       matrix:
         platforms: [
           'iOS_18,watchOS_11',
-          'macOS_15,tvOS_18',
+          'macOS_26,tvOS_18',
           'visionOS_2'
         ]
       fail-fast: false

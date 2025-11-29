@@ -23,7 +23,7 @@ enum TaskError: Error {
 enum Platform: String, CaseIterable, CustomStringConvertible {
 	case iOS_18
 	case tvOS_18
-	case macOS_15
+	case macOS_26
 	case macCatalyst_15
 	case watchOS_11
 	case visionOS_2
@@ -36,7 +36,7 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
 		case .tvOS_18:
 			"platform=tvOS Simulator,OS=18.5,name=Apple TV"
 
-		case .macOS_15,
+		case .macOS_26,
 			 .macCatalyst_15:
 			"platform=OS X"
 
@@ -56,9 +56,9 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
 		case .tvOS_18:
 			"appletvsimulator"
 
-		case .macOS_15,
+		case .macOS_26,
 			 .macCatalyst_15:
-			"macosx15.5"
+			"macosx26.1"
 
 		case .watchOS_11:
 			"watchsimulator"
