@@ -202,7 +202,7 @@ func cancellableQueueExample() async {
         private func processImage(_ image: UIImage) async -> UIImage {
             // Expensive image processing implementation…
         }
-        private let queue = ActorQueue<ImageLoader>()
+
         private let cancellableQueue: CancellableQueue<ActorQueue<ImageLoader>>
     }
 
