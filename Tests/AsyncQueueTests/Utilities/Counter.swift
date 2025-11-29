@@ -28,14 +28,14 @@ actor Counter {
 		filePath: String = #filePath,
 		fileID: String = #fileID,
 		line: Int = #line,
-		column: Int = #column
+		column: Int = #column,
 	) {
 		increment()
 		#expect(expectedCount == count, sourceLocation: .init(
 			fileID: fileID,
 			filePath: filePath,
 			line: line,
-			column: column
+			column: column,
 		))
 	}
 

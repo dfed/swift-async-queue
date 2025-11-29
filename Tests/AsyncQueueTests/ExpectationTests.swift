@@ -33,7 +33,7 @@ struct ExpectationTests {
 				expect: { expectation, _, _ in
 					#expect(expectation)
 					confirmation()
-				}
+				},
 			)
 			await systemUnderTest.fulfill().value
 		}
@@ -47,7 +47,7 @@ struct ExpectationTests {
 				expect: { expectation, _, _ in
 					#expect(expectation)
 					confirmation()
-				}
+				},
 			)
 			await systemUnderTest.fulfill().value
 			await systemUnderTest.fulfill().value
@@ -62,7 +62,7 @@ struct ExpectationTests {
 				expect: { expectation, _, _ in
 					#expect(!expectation)
 					confirmation()
-				}
+				},
 			)
 			await systemUnderTest.fulfill().value
 		}
@@ -98,7 +98,7 @@ struct ExpectationTests {
 				expect: { expectation, _, _ in
 					#expect(!expectation)
 					confirmation()
-				}
+				},
 			)
 			await systemUnderTest.fulfillment(withinSeconds: 0)
 		}

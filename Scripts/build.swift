@@ -37,7 +37,7 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
 			"platform=tvOS Simulator,OS=18.5,name=Apple TV"
 
 		case .macOS_15,
-		     .macCatalyst_15:
+			 .macCatalyst_15:
 			"platform=OS X"
 
 		case .watchOS_11:
@@ -57,7 +57,7 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
 			"appletvsimulator"
 
 		case .macOS_15,
-		     .macCatalyst_15:
+			 .macCatalyst_15:
 			"macosx15.5"
 
 		case .watchOS_11:

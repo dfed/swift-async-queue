@@ -84,7 +84,7 @@ extension Task {
 	@discardableResult
 	public init(
 		on fifoQueue: FIFOQueue,
-		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async -> Success
+		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async -> Success,
 	) where Failure == Never {
 		let delivery = Delivery<Success, Failure>()
 		let semaphore = Semaphore()
@@ -102,7 +102,7 @@ extension Task {
 					await semaphore.signal()
 					return await delivery.getValue()
 				},
-				onCancel: delivery.cancel
+				onCancel: delivery.cancel,
 			)
 		}
 	}
@@ -134,7 +134,7 @@ extension Task {
 	@discardableResult
 	public init(
 		on fifoQueue: FIFOQueue,
-		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async throws -> Success
+		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async throws -> Success,
 	) where Failure == any Error {
 		let delivery = Delivery<Success, Failure>()
 		let semaphore = Semaphore()
@@ -156,7 +156,7 @@ extension Task {
 					await semaphore.signal()
 					return try await delivery.getValue()
 				},
-				onCancel: delivery.cancel
+				onCancel: delivery.cancel,
 			)
 		}
 	}
@@ -191,7 +191,7 @@ extension Task {
 		priority: TaskPriority? = nil,
 		on fifoQueue: FIFOQueue,
 		isolatedTo isolatedActor: ActorType,
-		operation: @Sendable @escaping (isolated ActorType) async -> Success
+		operation: @Sendable @escaping (isolated ActorType) async -> Success,
 	) where Failure == Never {
 		let delivery = Delivery<Success, Failure>()
 		let semaphore = Semaphore()
@@ -208,7 +208,7 @@ extension Task {
 					await semaphore.signal()
 					return await delivery.getValue()
 				},
-				onCancel: delivery.cancel
+				onCancel: delivery.cancel,
 			)
 		}
 	}
@@ -245,7 +245,7 @@ extension Task {
 		priority: TaskPriority? = nil,
 		on fifoQueue: FIFOQueue,
 		isolatedTo isolatedActor: ActorType,
-		operation: @Sendable @escaping (isolated ActorType) async throws -> Success
+		operation: @Sendable @escaping (isolated ActorType) async throws -> Success,
 	) where Failure == any Error {
 		let delivery = Delivery<Success, Failure>()
 		let semaphore = Semaphore()
@@ -266,7 +266,7 @@ extension Task {
 					await semaphore.signal()
 					return try await delivery.getValue()
 				},
-				onCancel: delivery.cancel
+				onCancel: delivery.cancel,
 			)
 		}
 	}
