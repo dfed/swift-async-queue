@@ -68,18 +68,20 @@ extension Task {
 	/// to the synchronous operation.
 	///
 	/// - Parameters:
+	///   - name: Human readable name of the task.
 	///   - priority: The priority of the task.
 	///     Pass `nil` to use the priority from `Task.currentPriority`.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init<ActorType: Actor>(
+		name: String? = nil,
 		priority: TaskPriority? = nil,
 		on actorQueue: CancellableQueue<ActorQueue<ActorType>>,
 		operation: @Sendable @escaping (isolated ActorType) async -> Success,
 	) where Failure == Never {
 		let identifier = UUID()
-		self.init(priority: priority, on: actorQueue.underlyingQueue, operation: {
+		self.init(name: name, priority: priority, on: actorQueue.underlyingQueue, operation: {
 			defer {
 				actorQueue.taskIdentifierToCancelMap.writeAsync {
 					$0[identifier] = nil
@@ -108,18 +110,20 @@ extension Task {
 	/// to the synchronous operation.
 	///
 	/// - Parameters:
+	///   - name: Human readable name of the task.
 	///   - priority: The priority of the task.
 	///     Pass `nil` to use the priority from `Task.currentPriority`.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init<ActorType: Actor>(
+		name: String? = nil,
 		priority: TaskPriority? = nil,
 		on actorQueue: CancellableQueue<ActorQueue<ActorType>>,
 		operation: @escaping @Sendable (isolated ActorType) async throws -> Success,
 	) where Failure == any Error {
 		let identifier = UUID()
-		self.init(priority: priority, on: actorQueue.underlyingQueue, operation: {
+		self.init(name: name, priority: priority, on: actorQueue.underlyingQueue, operation: {
 			defer {
 				actorQueue.taskIdentifierToCancelMap.writeAsync {
 					$0[identifier] = nil
@@ -148,18 +152,20 @@ extension Task {
 	/// to the synchronous operation.
 	///
 	/// - Parameters:
+	///   - name: Human readable name of the task.
 	///   - priority: The priority of the task.
 	///     Pass `nil` to use the priority from `Task.currentPriority`.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init(
+		name: String? = nil,
 		priority: TaskPriority? = nil,
 		on actorQueue: CancellableQueue<ActorQueue<MainActor>>,
 		operation: @MainActor @escaping () async -> Success,
 	) where Failure == Never {
 		let identifier = UUID()
-		self.init(priority: priority, on: actorQueue.underlyingQueue, operation: {
+		self.init(name: name, priority: priority, on: actorQueue.underlyingQueue, operation: {
 			defer {
 				actorQueue.taskIdentifierToCancelMap.writeAsync {
 					$0[identifier] = nil
@@ -188,18 +194,20 @@ extension Task {
 	/// to the synchronous operation.
 	///
 	/// - Parameters:
+	///   - name: Human readable name of the task.
 	///   - priority: The priority of the task.
 	///     Pass `nil` to use the priority from `Task.currentPriority`.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init(
+		name: String? = nil,
 		priority: TaskPriority? = nil,
 		on actorQueue: CancellableQueue<ActorQueue<MainActor>>,
 		operation: @escaping @MainActor () async throws -> Success,
 	) where Failure == any Error {
 		let identifier = UUID()
-		self.init(priority: priority, on: actorQueue.underlyingQueue, operation: {
+		self.init(name: name, priority: priority, on: actorQueue.underlyingQueue, operation: {
 			defer {
 				actorQueue.taskIdentifierToCancelMap.writeAsync {
 					$0[identifier] = nil
@@ -228,15 +236,17 @@ extension Task {
 	/// to the synchronous operation.
 	///
 	/// - Parameters:
+	///   - name: Human readable name of the task.
 	///   - fifoQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init(
+		name: String? = nil,
 		on fifoQueue: CancellableQueue<FIFOQueue>,
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async -> Success,
 	) where Failure == Never {
 		let identifier = UUID()
-		self.init(on: fifoQueue.underlyingQueue, operation: {
+		self.init(name: name, on: fifoQueue.underlyingQueue, operation: {
 			defer {
 				fifoQueue.taskIdentifierToCancelMap.writeAsync {
 					$0[identifier] = nil
@@ -265,15 +275,17 @@ extension Task {
 	/// to the synchronous operation.
 	///
 	/// - Parameters:
+	///   - name: Human readable name of the task.
 	///   - fifoQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init(
+		name: String? = nil,
 		on fifoQueue: CancellableQueue<FIFOQueue>,
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async throws -> Success,
 	) where Failure == any Error {
 		let identifier = UUID()
-		self.init(on: fifoQueue.underlyingQueue, operation: {
+		self.init(name: name, on: fifoQueue.underlyingQueue, operation: {
 			defer {
 				fifoQueue.taskIdentifierToCancelMap.writeAsync {
 					$0[identifier] = nil
@@ -302,6 +314,7 @@ extension Task {
 	/// to the synchronous operation.
 	///
 	/// - Parameters:
+	///   - name: Human readable name of the task.
 	///   - priority: The priority of the task.
 	///     Pass `nil` to use the priority from `Task.currentPriority`.
 	///   - fifoQueue: The queue on which to enqueue the task.
@@ -309,13 +322,14 @@ extension Task {
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init<ActorType: Actor>(
+		name: String? = nil,
 		priority: TaskPriority? = nil,
 		on fifoQueue: CancellableQueue<FIFOQueue>,
 		isolatedTo isolatedActor: ActorType,
 		operation: @Sendable @escaping (isolated ActorType) async -> Success,
 	) where Failure == Never {
 		let identifier = UUID()
-		self.init(priority: priority, on: fifoQueue.underlyingQueue, isolatedTo: isolatedActor, operation: {
+		self.init(name: name, priority: priority, on: fifoQueue.underlyingQueue, isolatedTo: isolatedActor, operation: {
 			defer {
 				fifoQueue.taskIdentifierToCancelMap.writeAsync {
 					$0[identifier] = nil
@@ -344,6 +358,7 @@ extension Task {
 	/// to the synchronous operation.
 	///
 	/// - Parameters:
+	///   - name: Human readable name of the task.
 	///   - priority: The priority of the task.
 	///     Pass `nil` to use the priority from `Task.currentPriority`.
 	///   - fifoQueue: The queue on which to enqueue the task.
@@ -351,13 +366,14 @@ extension Task {
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init<ActorType: Actor>(
+		name: String? = nil,
 		priority: TaskPriority? = nil,
 		on fifoQueue: CancellableQueue<FIFOQueue>,
 		isolatedTo isolatedActor: ActorType,
 		operation: @Sendable @escaping (isolated ActorType) async throws -> Success,
 	) where Failure == any Error {
 		let identifier = UUID()
-		self.init(priority: priority, on: fifoQueue.underlyingQueue, isolatedTo: isolatedActor, operation: {
+		self.init(name: name, priority: priority, on: fifoQueue.underlyingQueue, isolatedTo: isolatedActor, operation: {
 			defer {
 				fifoQueue.taskIdentifierToCancelMap.writeAsync {
 					$0[identifier] = nil
