@@ -27,12 +27,13 @@ public final class FIFOQueue: Sendable {
 	// MARK: Initialization
 
 	/// Instantiates a FIFO queue.
+	/// - Parameter name: Human readable name of the queue.
 	/// - Parameter priority: The baseline priority of the tasks added to the asynchronous queue.
-	public init(priority: TaskPriority? = nil) {
+	public init(name: String? = nil, priority: TaskPriority? = nil) {
 		let (taskStream, taskStreamContinuation) = AsyncStream<FIFOTask>.makeStream()
 		self.taskStreamContinuation = taskStreamContinuation
 
-		Task.detached(priority: priority) {
+		Task.detached(name: name, priority: priority) {
 			for await fifoTask in taskStream {
 				await fifoTask.task()
 			}
@@ -79,10 +80,12 @@ extension Task {
 	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
+	///   - name: Human readable name of the task.
 	///   - fifoQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init(
+		name: String? = nil,
 		on fifoQueue: FIFOQueue,
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async -> Success,
 	) where Failure == Never {
@@ -93,10 +96,10 @@ extension Task {
 			await semaphore.wait()
 			await delivery.execute({ @Sendable delivery in
 				await delivery.sendValue(executeOnce.operation())
-			}, in: delivery).value
+			}, in: delivery, name: name).value
 		}
 		fifoQueue.taskStreamContinuation.yield(task)
-		self.init {
+		self.init(name: name) {
 			await withTaskCancellationHandler(
 				operation: {
 					await semaphore.signal()
@@ -129,10 +132,12 @@ extension Task {
 	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
+	///   - name: Human readable name of the task.
 	///   - fifoQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init(
+		name: String? = nil,
 		on fifoQueue: FIFOQueue,
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async throws -> Success,
 	) where Failure == any Error {
@@ -147,10 +152,10 @@ extension Task {
 				} catch {
 					delivery.sendFailure(error)
 				}
-			}, in: delivery).value
+			}, in: delivery, name: name).value
 		}
 		fifoQueue.taskStreamContinuation.yield(task)
-		self.init {
+		self.init(name: name) {
 			try await withTaskCancellationHandler(
 				operation: {
 					await semaphore.signal()
@@ -183,6 +188,7 @@ extension Task {
 	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
+	///   - name: Human readable name of the task.
 	///   - priority: The priority of the task.
 	///     Pass `nil` to use the priority from `Task.currentPriority`.
 	///   - fifoQueue: The queue on which to enqueue the task.
@@ -190,6 +196,7 @@ extension Task {
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init<ActorType: Actor>(
+		name: String? = nil,
 		priority: TaskPriority? = nil,
 		on fifoQueue: FIFOQueue,
 		isolatedTo isolatedActor: ActorType,
@@ -201,10 +208,10 @@ extension Task {
 			await semaphore.wait()
 			await delivery.execute({ @Sendable isolatedActor in
 				await delivery.sendValue(operation(isolatedActor))
-			}, in: isolatedActor, priority: priority).value
+			}, in: isolatedActor, name: name, priority: priority).value
 		}
 		fifoQueue.taskStreamContinuation.yield(task)
-		self.init {
+		self.init(name: name) {
 			await withTaskCancellationHandler(
 				operation: {
 					await semaphore.signal()
@@ -237,6 +244,7 @@ extension Task {
 	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
+	///   - name: Human readable name of the task.
 	///   - priority: The priority of the task.
 	///     Pass `nil` to use the priority from `Task.currentPriority`.
 	///   - fifoQueue: The queue on which to enqueue the task.
@@ -244,6 +252,7 @@ extension Task {
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init<ActorType: Actor>(
+		name: String? = nil,
 		priority: TaskPriority? = nil,
 		on fifoQueue: FIFOQueue,
 		isolatedTo isolatedActor: ActorType,
@@ -259,10 +268,10 @@ extension Task {
 				} catch {
 					await delivery.sendFailure(error)
 				}
-			}, in: isolatedActor, priority: priority).value
+			}, in: isolatedActor, name: name, priority: priority).value
 		}
 		fifoQueue.taskStreamContinuation.yield(task)
-		self.init(priority: priority) {
+		self.init(name: name, priority: priority) {
 			try await withTaskCancellationHandler(
 				operation: {
 					await semaphore.signal()
