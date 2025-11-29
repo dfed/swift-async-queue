@@ -81,11 +81,13 @@ extension Task {
 	///
 	/// - Parameters:
 	///   - name: Human readable name of the task.
+	///   - priority: The priority of the task.
 	///   - fifoQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init(
 		name: String? = nil,
+		priority: TaskPriority? = nil,
 		on fifoQueue: FIFOQueue,
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async -> Success,
 	) where Failure == Never {
@@ -96,7 +98,7 @@ extension Task {
 			await semaphore.wait()
 			await delivery.execute({ @Sendable delivery in
 				await delivery.sendValue(executeOnce.operation())
-			}, in: delivery, name: name).value
+			}, in: delivery, name: name, priority: priority).value
 		}
 		fifoQueue.taskStreamContinuation.yield(task)
 		self.init(name: name) {
@@ -133,11 +135,13 @@ extension Task {
 	///
 	/// - Parameters:
 	///   - name: Human readable name of the task.
+	///   - priority: The priority of the task.
 	///   - fifoQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
 	public init(
 		name: String? = nil,
+		priority: TaskPriority? = nil,
 		on fifoQueue: FIFOQueue,
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async throws -> Success,
 	) where Failure == any Error {
@@ -152,7 +156,7 @@ extension Task {
 				} catch {
 					delivery.sendFailure(error)
 				}
-			}, in: delivery, name: name).value
+			}, in: delivery, name: name, priority: priority).value
 		}
 		fifoQueue.taskStreamContinuation.yield(task)
 		self.init(name: name) {
