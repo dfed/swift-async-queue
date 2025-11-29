@@ -69,12 +69,6 @@ extension Task {
 	/// so the operation is treated more like an asynchronous extension
 	/// to the synchronous operation.
 	///
-	/// You need to keep a reference to the task
-	/// if you want to cancel it by calling the `Task.cancel()` method.
-	/// Discarding your reference to a detached task
-	/// doesn't implicitly cancel that task,
-	/// it only makes it impossible for you to explicitly cancel the task.
-	///
 	/// - Parameters:
 	///   - priority: The priority of the task.
 	///     Pass `nil` to use the priority from `Task.currentPriority`.
@@ -114,12 +108,6 @@ extension Task {
 	/// inherits the priority and actor context of the caller,
 	/// so the operation is treated more like an asynchronous extension
 	/// to the synchronous operation.
-	///
-	/// You need to keep a reference to the task
-	/// if you want to cancel it by calling the `Task.cancel()` method.
-	/// Discarding your reference to a detached task
-	/// doesn't implicitly cancel that task,
-	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
 	///   - priority: The priority of the task.
@@ -161,12 +149,6 @@ extension Task {
 	/// so the operation is treated more like an asynchronous extension
 	/// to the synchronous operation.
 	///
-	/// You need to keep a reference to the task
-	/// if you want to cancel it by calling the `Task.cancel()` method.
-	/// Discarding your reference to a detached task
-	/// doesn't implicitly cancel that task,
-	/// it only makes it impossible for you to explicitly cancel the task.
-	///
 	/// - Parameters:
 	///   - priority: The priority of the task.
 	///     Pass `nil` to use the priority from `Task.currentPriority`.
@@ -206,12 +188,6 @@ extension Task {
 	/// inherits the priority and actor context of the caller,
 	/// so the operation is treated more like an asynchronous extension
 	/// to the synchronous operation.
-	///
-	/// You need to keep a reference to the task
-	/// if you want to cancel it by calling the `Task.cancel()` method.
-	/// Discarding your reference to a detached task
-	/// doesn't implicitly cancel that task,
-	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
 	///   - priority: The priority of the task.
@@ -253,12 +229,6 @@ extension Task {
 	/// so the operation is treated more like an asynchronous extension
 	/// to the synchronous operation.
 	///
-	/// You need to keep a reference to the task
-	/// if you want to cancel it by calling the `Task.cancel()` method.
-	/// Discarding your reference to a detached task
-	/// doesn't implicitly cancel that task,
-	/// it only makes it impossible for you to explicitly cancel the task.
-	///
 	/// - Parameters:
 	///   - fifoQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
@@ -296,12 +266,6 @@ extension Task {
 	/// so the operation is treated more like an asynchronous extension
 	/// to the synchronous operation.
 	///
-	/// You need to keep a reference to the task
-	/// if you want to cancel it by calling the `Task.cancel()` method.
-	/// Discarding your reference to a detached task
-	/// doesn't implicitly cancel that task,
-	/// it only makes it impossible for you to explicitly cancel the task.
-	///
 	/// - Parameters:
 	///   - fifoQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
@@ -338,12 +302,6 @@ extension Task {
 	/// inherits the priority and actor context of the caller,
 	/// so the operation is treated more like an asynchronous extension
 	/// to the synchronous operation.
-	///
-	/// You need to keep a reference to the task
-	/// if you want to cancel it by calling the `Task.cancel()` method.
-	/// Discarding your reference to a detached task
-	/// doesn't implicitly cancel that task,
-	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
 	///   - priority: The priority of the task.
@@ -386,12 +344,6 @@ extension Task {
 	/// inherits the priority and actor context of the caller,
 	/// so the operation is treated more like an asynchronous extension
 	/// to the synchronous operation.
-	///
-	/// You need to keep a reference to the task
-	/// if you want to cancel it by calling the `Task.cancel()` method.
-	/// Discarding your reference to a detached task
-	/// doesn't implicitly cancel that task,
-	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
 	///   - priority: The priority of the task.
