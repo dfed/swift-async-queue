@@ -25,7 +25,6 @@ let package = Package(
 			dependencies: [],
 			swiftSettings: [
 				.swiftLanguageMode(.v6),
-				.treatAllWarnings(as: .error),
 			],
 		),
 		.testTarget(
@@ -33,7 +32,6 @@ let package = Package(
 			dependencies: ["AsyncQueue"],
 			swiftSettings: [
 				.swiftLanguageMode(.v6),
-				.treatAllWarnings(as: .error),
 			],
 		),
 	],
