@@ -61,6 +61,9 @@ jobs:
           sudo xcrun simctl list
           sudo xcodebuild -downloadPlatform visionOS
           sudo xcodebuild -runFirstLaunch
+      - name: Download iOS
+        if: matrix.platforms == 'iOS_18,watchOS_11'
+        run: sudo xcodebuild -downloadPlatform iOS -buildVersion 22F77
       - name: Build and Test Framework
         run: Scripts/build.swift ${{ matrix.platforms }}
       - name: Prepare Coverage Reports
