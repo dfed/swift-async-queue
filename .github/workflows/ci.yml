@@ -53,7 +53,7 @@ jobs:
           ruby-version: '3.3.5'
           bundler-cache: true
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_26.1.1.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_26.4.app/Contents/Developer
       - name: Download visionOS
         if: matrix.platforms == 'visionOS_2'
         run: |
@@ -63,7 +63,11 @@ jobs:
           sudo xcodebuild -runFirstLaunch
       - name: Download iOS
         if: matrix.platforms == 'iOS_18,watchOS_11'
-        run: sudo xcodebuild -downloadPlatform iOS -buildVersion 22F77
+        run: |
+          sudo xcodebuild -runFirstLaunch
+          sudo xcrun simctl list
+          sudo xcodebuild -downloadPlatform iOS -buildVersion 22F77
+          sudo xcodebuild -runFirstLaunch
       - name: Build and Test Framework
         run: Scripts/build.swift ${{ matrix.platforms }}
       - name: Prepare Coverage Reports
