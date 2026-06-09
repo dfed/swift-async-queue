@@ -20,7 +20,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import Foundation
+#if canImport(FoundationEssentials)
+	import FoundationEssentials
+#else
+	import Foundation
+#endif
+#if canImport(Dispatch)
+	import Dispatch
+#endif
 
 /// A queue wrapper that enables cancelling all currently executing and pending tasks.
 ///
@@ -398,7 +405,7 @@ private final class Lock<State>: @unchecked Sendable {
 
 	// MARK: Fileprivate
 
-	fileprivate func withLock<R>(_ body: @Sendable (inout State) throws -> R) rethrows -> R where R: Sendable {
+	fileprivate func withLock<R: Sendable>(_ body: @Sendable (inout State) throws -> R) rethrows -> R {
 		try lockQueue.sync {
 			try body(&unsafeValue)
 		}
