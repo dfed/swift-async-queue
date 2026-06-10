@@ -265,17 +265,15 @@ struct FIFOQueueTests {
 	func task_executesAfterQueueIsDeallocated() async throws {
 		var systemUnderTest: FIFOQueue? = FIFOQueue()
 		let counter = Counter()
-		let expectation = Expectation()
 		let semaphore = Semaphore()
 		try Task(on: #require(systemUnderTest)) {
 			// Make the queue wait.
 			await semaphore.wait()
 			await counter.incrementAndExpectCount(equals: 1)
 		}
-		try Task(on: #require(systemUnderTest)) {
+		let lastTask = try Task(on: #require(systemUnderTest)) {
 			// This async task should not execute until the semaphore is released.
 			await counter.incrementAndExpectCount(equals: 2)
-			expectation.fulfill()
 		}
 		weak var queue = systemUnderTest
 		// Nil out our reference to the queue to show that the enqueued tasks will still complete
@@ -284,24 +282,23 @@ struct FIFOQueueTests {
 		// Signal the semaphore to unlock the remaining enqueued tasks.
 		await semaphore.signal()
 
-		await expectation.fulfillment(withinSeconds: 30)
+		// Await the last enqueued task to deterministically confirm the enqueued work ran after the queue was deallocated.
+		await lastTask.value
 	}
 
 	@Test
 	func taskIsolatedTo_executesAfterQueueIsDeallocated() async throws {
 		var systemUnderTest: FIFOQueue? = FIFOQueue()
 		let counter = Counter()
-		let expectation = Expectation()
 		let semaphore = Semaphore()
 		try Task(on: #require(systemUnderTest), isolatedTo: counter) { counter in
 			// Make the queue wait.
 			await semaphore.wait()
 			counter.incrementAndExpectCount(equals: 1)
 		}
-		try Task(on: #require(systemUnderTest), isolatedTo: counter) { counter in
+		let lastTask = try Task(on: #require(systemUnderTest), isolatedTo: counter) { counter in
 			// This async task should not execute until the semaphore is released.
 			counter.incrementAndExpectCount(equals: 2)
-			expectation.fulfill()
 		}
 		weak var queue = systemUnderTest
 		// Nil out our reference to the queue to show that the enqueued tasks will still complete
@@ -310,14 +307,14 @@ struct FIFOQueueTests {
 		// Signal the semaphore to unlock the remaining enqueued tasks.
 		await semaphore.signal()
 
-		await expectation.fulfillment(withinSeconds: 30)
+		// Await the last enqueued task to deterministically confirm the enqueued work ran after the queue was deallocated.
+		await lastTask.value
 	}
 
 	@Test
 	func throwingTask_executesAfterQueueIsDeallocated() async throws {
 		var systemUnderTest: FIFOQueue? = FIFOQueue()
 		let counter = Counter()
-		let expectation = Expectation()
 		let semaphore = Semaphore()
 		try Task(on: #require(systemUnderTest)) {
 			// Make the queue wait.
@@ -325,10 +322,9 @@ struct FIFOQueueTests {
 			await counter.incrementAndExpectCount(equals: 1)
 			try doWork()
 		}
-		try Task(on: #require(systemUnderTest)) {
+		let lastTask = try Task(on: #require(systemUnderTest)) {
 			// This async task should not execute until the semaphore is released.
 			await counter.incrementAndExpectCount(equals: 2)
-			expectation.fulfill()
 			try doWork()
 		}
 		weak var queue = systemUnderTest
@@ -338,14 +334,14 @@ struct FIFOQueueTests {
 		// Signal the semaphore to unlock the remaining enqueued tasks.
 		await semaphore.signal()
 
-		await expectation.fulfillment(withinSeconds: 30)
+		// Await the last enqueued task to deterministically confirm the enqueued work ran after the queue was deallocated.
+		try await lastTask.value
 	}
 
 	@Test
 	func throwingTaskIsolatedTo_executesAfterQueueIsDeallocated() async throws {
 		var systemUnderTest: FIFOQueue? = FIFOQueue()
 		let counter = Counter()
-		let expectation = Expectation()
 		let semaphore = Semaphore()
 		try Task(on: #require(systemUnderTest), isolatedTo: counter) { counter in
 			// Make the queue wait.
@@ -353,10 +349,9 @@ struct FIFOQueueTests {
 			counter.incrementAndExpectCount(equals: 1)
 			try doWork()
 		}
-		try Task(on: #require(systemUnderTest), isolatedTo: counter) { counter in
+		let lastTask = try Task(on: #require(systemUnderTest), isolatedTo: counter) { counter in
 			// This async task should not execute until the semaphore is released.
 			counter.incrementAndExpectCount(equals: 2)
-			expectation.fulfill()
 			try doWork()
 		}
 		weak var queue = systemUnderTest
@@ -366,7 +361,8 @@ struct FIFOQueueTests {
 		// Signal the semaphore to unlock the remaining enqueued tasks.
 		await semaphore.signal()
 
-		await expectation.fulfillment(withinSeconds: 30)
+		// Await the last enqueued task to deterministically confirm the enqueued work ran after the queue was deallocated.
+		try await lastTask.value
 	}
 
 	@Test
