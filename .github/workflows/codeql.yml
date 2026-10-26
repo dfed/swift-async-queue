@@ -50,7 +50,7 @@ jobs:
         # your codebase is analyzed, see https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/codeql-code-scanning-for-compiled-languages
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
     - if: matrix.language == 'swift'
       name: Select Xcode Version
       run: sudo xcode-select --switch /Applications/Xcode_26.1.1.app/Contents/Developer
