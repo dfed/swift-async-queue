@@ -46,6 +46,28 @@ struct CancellableQueueTests {
 	}
 
 	@Test
+	func cancelTasks_fifoQueue_doesNotCancelManyCompletedTasks() async {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let counter = Counter()
+
+		// Create and complete many tasks. A task can finish before it is registered with the queue,
+		// so use enough tasks to reliably exercise that ordering.
+		var tasks = [Task<Void, any Error>]()
+		for _ in 0..<1_000 {
+			let task = Task(on: systemUnderTest, isolatedTo: counter) { _ in
+				try doWork()
+			}
+			_ = await task.result
+			tasks.append(task)
+		}
+
+		// Now cancel tasks - should have no effect since every task already completed.
+		systemUnderTest.cancelTasks()
+
+		#expect(tasks.allSatisfy { !$0.isCancelled })
+	}
+
+	@Test
 	func cancelTasks_fifoQueue_cancelsCurrentlyExecutingTask() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
 		let taskStarted = Semaphore()
@@ -136,6 +158,30 @@ struct CancellableQueueTests {
 		systemUnderTest.cancelTasks()
 
 		#expect(!task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_actorQueue_doesNotCancelManyCompletedTasks() async {
+		let actorQueue = ActorQueue<Counter>()
+		let counter = Counter()
+		actorQueue.adoptExecutionContext(of: counter)
+		let systemUnderTest = CancellableQueue(underlyingQueue: actorQueue)
+
+		// Create and complete many tasks. A task can finish before it is registered with the queue,
+		// so use enough tasks to reliably exercise that ordering.
+		var tasks = [Task<Void, any Error>]()
+		for _ in 0..<1_000 {
+			let task = Task(on: systemUnderTest) { _ in
+				try doWork()
+			}
+			_ = await task.result
+			tasks.append(task)
+		}
+
+		// Now cancel tasks - should have no effect since every task already completed.
+		systemUnderTest.cancelTasks()
+
+		#expect(tasks.allSatisfy { !$0.isCancelled })
 	}
 
 	@Test
