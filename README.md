@@ -235,8 +235,6 @@ Task(on: cancellableQueue) {
 
 ## Installation
 
-### Swift Package Manager
-
 To install swift-async-queue in your project with [Swift Package Manager](https://github.com/apple/swift-package-manager), the following lines can be added to your `Package.swift` file:
 
 ```swift
@@ -244,10 +242,6 @@ dependencies: [
     .package(url: "https://github.com/dfed/swift-async-queue", from: "1.0.0"),
 ]
 ```
-
-### CocoaPods
-
-swift-async-queue is no longer published to CocoaPods. Version 1.0.0 remains available via `pod 'AsyncQueue', '~> 1.0.0'`, but newer releases are only available via Swift Package Manager.
 
 ## Contributing
 
