@@ -46,25 +46,33 @@ struct CancellableQueueTests {
 	}
 
 	@Test
-	func cancelTasks_fifoQueue_doesNotCancelManyCompletedTasks() async {
+	func cancelTasks_doesNotCancelTaskThatFinishedBeforeRegisteringCancellation() {
 		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
-		let counter = Counter()
+		let task = Task<Void, Never> {}
 
-		// Create and complete many tasks. A task can finish before it is registered with the queue,
-		// so use enough tasks to reliably exercise that ordering.
-		var tasks = [Task<Void, any Error>]()
-		for _ in 0..<1_000 {
-			let task = Task(on: systemUnderTest, isolatedTo: counter) { _ in
-				try doWork()
-			}
-			_ = await task.result
-			tasks.append(task)
-		}
+		// Finish the task before registering its cancellation.
+		let identifier = systemUnderTest.reserveTaskIdentifier()
+		systemUnderTest.taskDidFinish(withIdentifier: identifier)
+		systemUnderTest.registerCancellation(forTaskWithIdentifier: identifier, task.cancel)
 
-		// Now cancel tasks - should have no effect since every task already completed.
 		systemUnderTest.cancelTasks()
 
-		#expect(tasks.allSatisfy { !$0.isCancelled })
+		#expect(!task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_cancelsTaskThatRegisteredCancellationAfterEarlierCancelTasks() {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let task = Task<Void, Never> {}
+
+		// Cancel tasks after the task reserved its identifier but before it registered its cancellation.
+		let identifier = systemUnderTest.reserveTaskIdentifier()
+		systemUnderTest.cancelTasks()
+		systemUnderTest.registerCancellation(forTaskWithIdentifier: identifier, task.cancel)
+
+		systemUnderTest.cancelTasks()
+
+		#expect(task.isCancelled)
 	}
 
 	@Test
@@ -158,30 +166,6 @@ struct CancellableQueueTests {
 		systemUnderTest.cancelTasks()
 
 		#expect(!task.isCancelled)
-	}
-
-	@Test
-	func cancelTasks_actorQueue_doesNotCancelManyCompletedTasks() async {
-		let actorQueue = ActorQueue<Counter>()
-		let counter = Counter()
-		actorQueue.adoptExecutionContext(of: counter)
-		let systemUnderTest = CancellableQueue(underlyingQueue: actorQueue)
-
-		// Create and complete many tasks. A task can finish before it is registered with the queue,
-		// so use enough tasks to reliably exercise that ordering.
-		var tasks = [Task<Void, any Error>]()
-		for _ in 0..<1_000 {
-			let task = Task(on: systemUnderTest) { _ in
-				try doWork()
-			}
-			_ = await task.result
-			tasks.append(task)
-		}
-
-		// Now cancel tasks - should have no effect since every task already completed.
-		systemUnderTest.cancelTasks()
-
-		#expect(tasks.allSatisfy { !$0.isCancelled })
 	}
 
 	@Test

@@ -47,7 +47,37 @@ public final class CancellableQueue<UnderlyingQueue: Sendable>: Sendable {
 	public func cancelTasks() {
 		taskIdentifierToCancelMap.withLock {
 			$0.values.forEach { $0?() }
-			$0.removeAll()
+			// Keep reservations so that tasks that have not yet registered remain cancellable.
+			$0 = $0.filter { $0.value == nil }
+		}
+	}
+
+	// MARK: Internal
+
+	/// Reserves an identifier for a task that is about to be created.
+	/// Reserving before the task starts ensures the task's removal of the identifier can never be processed before the reservation.
+	func reserveTaskIdentifier() -> UUID {
+		let identifier = UUID()
+		taskIdentifierToCancelMap.writeAsync {
+			$0.updateValue(nil, forKey: identifier)
+		}
+		return identifier
+	}
+
+	/// Registers the `cancel` closure for a task whose identifier was previously reserved.
+	func registerCancellation(forTaskWithIdentifier identifier: UUID, _ cancel: @escaping @Sendable () -> Void) {
+		taskIdentifierToCancelMap.writeAsync {
+			// Skip registration if the identifier was already removed because the task already finished.
+			if $0.keys.contains(identifier) {
+				$0[identifier] = cancel
+			}
+		}
+	}
+
+	/// Removes the identifier of a task that has finished executing.
+	func taskDidFinish(withIdentifier identifier: UUID) {
+		taskIdentifierToCancelMap.writeAsync {
+			$0[identifier] = nil
 		}
 	}
 
@@ -87,26 +117,14 @@ extension Task {
 		on actorQueue: CancellableQueue<ActorQueue<ActorType>>,
 		operation: @Sendable @escaping (isolated ActorType) async -> Success,
 	) where Failure == Never {
-		let identifier = UUID()
-		// Reserve the identifier before the task starts so that the task's removal of the identifier
-		// can never be processed before the task's registration below.
-		actorQueue.taskIdentifierToCancelMap.writeAsync {
-			$0.updateValue(nil, forKey: identifier)
-		}
+		let identifier = actorQueue.reserveTaskIdentifier()
 		self.init(name: name, priority: priority, on: actorQueue.underlyingQueue, operation: {
 			defer {
-				actorQueue.taskIdentifierToCancelMap.writeAsync {
-					$0[identifier] = nil
-				}
+				actorQueue.taskDidFinish(withIdentifier: identifier)
 			}
 			return await operation($0)
 		})
-		actorQueue.taskIdentifierToCancelMap.writeAsync { [cancel] in
-			// Skip registration if the identifier was already removed, e.g. because the task already finished.
-			if $0.keys.contains(identifier) {
-				$0[identifier] = cancel
-			}
-		}
+		actorQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
 	}
 
 	/// Runs the given throwing operation asynchronously
@@ -137,26 +155,14 @@ extension Task {
 		on actorQueue: CancellableQueue<ActorQueue<ActorType>>,
 		operation: @escaping @Sendable (isolated ActorType) async throws -> Success,
 	) where Failure == any Error {
-		let identifier = UUID()
-		// Reserve the identifier before the task starts so that the task's removal of the identifier
-		// can never be processed before the task's registration below.
-		actorQueue.taskIdentifierToCancelMap.writeAsync {
-			$0.updateValue(nil, forKey: identifier)
-		}
+		let identifier = actorQueue.reserveTaskIdentifier()
 		self.init(name: name, priority: priority, on: actorQueue.underlyingQueue, operation: {
 			defer {
-				actorQueue.taskIdentifierToCancelMap.writeAsync {
-					$0[identifier] = nil
-				}
+				actorQueue.taskDidFinish(withIdentifier: identifier)
 			}
 			return try await operation($0)
 		})
-		actorQueue.taskIdentifierToCancelMap.writeAsync { [cancel] in
-			// Skip registration if the identifier was already removed, e.g. because the task already finished.
-			if $0.keys.contains(identifier) {
-				$0[identifier] = cancel
-			}
-		}
+		actorQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
 	}
 
 	/// Runs the given nonthrowing operation asynchronously
@@ -187,26 +193,14 @@ extension Task {
 		on actorQueue: CancellableQueue<ActorQueue<MainActor>>,
 		operation: @MainActor @escaping () async -> Success,
 	) where Failure == Never {
-		let identifier = UUID()
-		// Reserve the identifier before the task starts so that the task's removal of the identifier
-		// can never be processed before the task's registration below.
-		actorQueue.taskIdentifierToCancelMap.writeAsync {
-			$0.updateValue(nil, forKey: identifier)
-		}
+		let identifier = actorQueue.reserveTaskIdentifier()
 		self.init(name: name, priority: priority, on: actorQueue.underlyingQueue, operation: {
 			defer {
-				actorQueue.taskIdentifierToCancelMap.writeAsync {
-					$0[identifier] = nil
-				}
+				actorQueue.taskDidFinish(withIdentifier: identifier)
 			}
 			return await operation()
 		})
-		actorQueue.taskIdentifierToCancelMap.writeAsync { [cancel] in
-			// Skip registration if the identifier was already removed, e.g. because the task already finished.
-			if $0.keys.contains(identifier) {
-				$0[identifier] = cancel
-			}
-		}
+		actorQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
 	}
 
 	/// Runs the given throwing operation asynchronously
@@ -237,26 +231,14 @@ extension Task {
 		on actorQueue: CancellableQueue<ActorQueue<MainActor>>,
 		operation: @escaping @MainActor () async throws -> Success,
 	) where Failure == any Error {
-		let identifier = UUID()
-		// Reserve the identifier before the task starts so that the task's removal of the identifier
-		// can never be processed before the task's registration below.
-		actorQueue.taskIdentifierToCancelMap.writeAsync {
-			$0.updateValue(nil, forKey: identifier)
-		}
+		let identifier = actorQueue.reserveTaskIdentifier()
 		self.init(name: name, priority: priority, on: actorQueue.underlyingQueue, operation: {
 			defer {
-				actorQueue.taskIdentifierToCancelMap.writeAsync {
-					$0[identifier] = nil
-				}
+				actorQueue.taskDidFinish(withIdentifier: identifier)
 			}
 			return try await operation()
 		})
-		actorQueue.taskIdentifierToCancelMap.writeAsync { [cancel] in
-			// Skip registration if the identifier was already removed, e.g. because the task already finished.
-			if $0.keys.contains(identifier) {
-				$0[identifier] = cancel
-			}
-		}
+		actorQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
 	}
 
 	/// Runs the given nonthrowing operation asynchronously
@@ -284,26 +266,14 @@ extension Task {
 		on fifoQueue: CancellableQueue<FIFOQueue>,
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async -> Success,
 	) where Failure == Never {
-		let identifier = UUID()
-		// Reserve the identifier before the task starts so that the task's removal of the identifier
-		// can never be processed before the task's registration below.
-		fifoQueue.taskIdentifierToCancelMap.writeAsync {
-			$0.updateValue(nil, forKey: identifier)
-		}
+		let identifier = fifoQueue.reserveTaskIdentifier()
 		self.init(name: name, on: fifoQueue.underlyingQueue, operation: {
 			defer {
-				fifoQueue.taskIdentifierToCancelMap.writeAsync {
-					$0[identifier] = nil
-				}
+				fifoQueue.taskDidFinish(withIdentifier: identifier)
 			}
 			return await operation()
 		})
-		fifoQueue.taskIdentifierToCancelMap.writeAsync { [cancel] in
-			// Skip registration if the identifier was already removed, e.g. because the task already finished.
-			if $0.keys.contains(identifier) {
-				$0[identifier] = cancel
-			}
-		}
+		fifoQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
 	}
 
 	/// Runs the given throwing operation asynchronously
@@ -331,26 +301,14 @@ extension Task {
 		on fifoQueue: CancellableQueue<FIFOQueue>,
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async throws -> Success,
 	) where Failure == any Error {
-		let identifier = UUID()
-		// Reserve the identifier before the task starts so that the task's removal of the identifier
-		// can never be processed before the task's registration below.
-		fifoQueue.taskIdentifierToCancelMap.writeAsync {
-			$0.updateValue(nil, forKey: identifier)
-		}
+		let identifier = fifoQueue.reserveTaskIdentifier()
 		self.init(name: name, on: fifoQueue.underlyingQueue, operation: {
 			defer {
-				fifoQueue.taskIdentifierToCancelMap.writeAsync {
-					$0[identifier] = nil
-				}
+				fifoQueue.taskDidFinish(withIdentifier: identifier)
 			}
 			return try await operation()
 		})
-		fifoQueue.taskIdentifierToCancelMap.writeAsync { [cancel] in
-			// Skip registration if the identifier was already removed, e.g. because the task already finished.
-			if $0.keys.contains(identifier) {
-				$0[identifier] = cancel
-			}
-		}
+		fifoQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
 	}
 
 	/// Runs the given nonthrowing operation asynchronously
@@ -383,26 +341,14 @@ extension Task {
 		isolatedTo isolatedActor: ActorType,
 		operation: @Sendable @escaping (isolated ActorType) async -> Success,
 	) where Failure == Never {
-		let identifier = UUID()
-		// Reserve the identifier before the task starts so that the task's removal of the identifier
-		// can never be processed before the task's registration below.
-		fifoQueue.taskIdentifierToCancelMap.writeAsync {
-			$0.updateValue(nil, forKey: identifier)
-		}
+		let identifier = fifoQueue.reserveTaskIdentifier()
 		self.init(name: name, priority: priority, on: fifoQueue.underlyingQueue, isolatedTo: isolatedActor, operation: {
 			defer {
-				fifoQueue.taskIdentifierToCancelMap.writeAsync {
-					$0[identifier] = nil
-				}
+				fifoQueue.taskDidFinish(withIdentifier: identifier)
 			}
 			return await operation($0)
 		})
-		fifoQueue.taskIdentifierToCancelMap.writeAsync { [cancel] in
-			// Skip registration if the identifier was already removed, e.g. because the task already finished.
-			if $0.keys.contains(identifier) {
-				$0[identifier] = cancel
-			}
-		}
+		fifoQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
 	}
 
 	/// Runs the given throwing operation asynchronously
@@ -435,26 +381,14 @@ extension Task {
 		isolatedTo isolatedActor: ActorType,
 		operation: @Sendable @escaping (isolated ActorType) async throws -> Success,
 	) where Failure == any Error {
-		let identifier = UUID()
-		// Reserve the identifier before the task starts so that the task's removal of the identifier
-		// can never be processed before the task's registration below.
-		fifoQueue.taskIdentifierToCancelMap.writeAsync {
-			$0.updateValue(nil, forKey: identifier)
-		}
+		let identifier = fifoQueue.reserveTaskIdentifier()
 		self.init(name: name, priority: priority, on: fifoQueue.underlyingQueue, isolatedTo: isolatedActor, operation: {
 			defer {
-				fifoQueue.taskIdentifierToCancelMap.writeAsync {
-					$0[identifier] = nil
-				}
+				fifoQueue.taskDidFinish(withIdentifier: identifier)
 			}
 			return try await operation($0)
 		})
-		fifoQueue.taskIdentifierToCancelMap.writeAsync { [cancel] in
-			// Skip registration if the identifier was already removed, e.g. because the task already finished.
-			if $0.keys.contains(identifier) {
-				$0[identifier] = cancel
-			}
-		}
+		fifoQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
 	}
 }
 
