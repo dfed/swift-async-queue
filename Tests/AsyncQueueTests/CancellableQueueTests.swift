@@ -46,6 +46,36 @@ struct CancellableQueueTests {
 	}
 
 	@Test
+	func cancelTasks_doesNotCancelTaskThatFinishedBeforeRegisteringCancellation() {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let task = Task<Void, Never> {}
+
+		// Finish the task before registering its cancellation.
+		let identifier = systemUnderTest.reserveTaskIdentifier()
+		systemUnderTest.taskDidFinish(withIdentifier: identifier)
+		systemUnderTest.registerCancellation(forTaskWithIdentifier: identifier, task.cancel)
+
+		systemUnderTest.cancelTasks()
+
+		#expect(!task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_cancelsTaskThatRegisteredCancellationAfterEarlierCancelTasks() {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let task = Task<Void, Never> {}
+
+		// Cancel tasks after the task reserved its identifier but before it registered its cancellation.
+		let identifier = systemUnderTest.reserveTaskIdentifier()
+		systemUnderTest.cancelTasks()
+		systemUnderTest.registerCancellation(forTaskWithIdentifier: identifier, task.cancel)
+
+		systemUnderTest.cancelTasks()
+
+		#expect(task.isCancelled)
+	}
+
+	@Test
 	func cancelTasks_fifoQueue_cancelsCurrentlyExecutingTask() async {
 		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
 		let taskStarted = Semaphore()
