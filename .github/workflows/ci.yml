@@ -14,27 +14,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  pod-lint:
-    name: Pod Lint
-    runs-on: macos-15
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v6
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3.5'
-          bundler-cache: true
-      - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_26.1.1.app/Contents/Developer
-      - name: Download visionOS
-        run: |
-          sudo xcodebuild -runFirstLaunch
-          sudo xcrun simctl list
-          sudo xcodebuild -downloadPlatform visionOS
-      - name: Lint Podspec
-        run: bundle exec pod lib lint --verbose --fail-fast --swift-version=6.2
   spm-16:
     name: Build Xcode 26
     runs-on: macos-15
@@ -51,10 +30,6 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v6
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3.5'
-          bundler-cache: true
       - name: Select Xcode Version
         run: sudo xcode-select --switch /Applications/Xcode_26.1.1.app/Contents/Developer
       - name: Download visionOS
@@ -99,10 +74,6 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v6
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3.5'
-          bundler-cache: true
       - name: Select Xcode Version
         run: sudo xcode-select --switch /Applications/Xcode_26.1.1.app/Contents/Developer
       - name: Build and Test Framework

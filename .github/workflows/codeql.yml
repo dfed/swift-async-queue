@@ -34,9 +34,6 @@ jobs:
         - language: actions
           build-mode: none
           runs-on: ubuntu-latest
-        - language: ruby
-          build-mode: none
-          runs-on: ubuntu-latest
         - language: swift
           build-mode: manual
           runs-on: macos-15
