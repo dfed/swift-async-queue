@@ -3,15 +3,24 @@ name: "CodeQL Advanced"
 on:
   push:
     branches: [ "main" ]
+    # Markdown can't change the analysis.
+    paths-ignore: [ "**.md" ]
   pull_request:
     branches: [ "main" ]
+    paths-ignore: [ "**.md" ]
   schedule:
     - cron: '35 2 * * 0'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: macOS-15
+    # Swift analysis requires macOS; the Actions-workflow and Ruby
+    # analyses don't, and they'd otherwise queue behind CI's macOS jobs.
+    runs-on: ${{ matrix.runs-on }}
     permissions:
       security-events: write
       packages: read
@@ -24,10 +33,13 @@ jobs:
         include:
         - language: actions
           build-mode: none
+          runs-on: ubuntu-latest
         - language: ruby
           build-mode: none
+          runs-on: ubuntu-latest
         - language: swift
-          build-mode: autobuild
+          build-mode: manual
+          runs-on: macos-15
         # CodeQL supports the following values keywords for 'language': 'actions', 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'rust', 'swift'
         # Use `c-cpp` to analyze code written in C, C++ or both
         # Use 'java-kotlin' to analyze code written in Java, Kotlin or both
@@ -39,7 +51,8 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v6
-    - name: Select Xcode Version
+    - if: matrix.language == 'swift'
+      name: Select Xcode Version
       run: sudo xcode-select --switch /Applications/Xcode_26.1.1.app/Contents/Developer
 
     # Initializes the CodeQL tools for scanning.
@@ -48,28 +61,28 @@ jobs:
       with:
         languages: ${{ matrix.language }}
         build-mode: ${{ matrix.build-mode }}
-        # If you wish to specify custom queries, you can do so here or in a config file.
-        # By default, queries listed here will override any specified in a config file.
-        # Prefix the list here with "+" to use these queries and those in the config file.
 
-        # For more details on CodeQL's query packs, refer to: https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning#using-queries-in-ql-packs
-        # queries: security-extended,security-and-quality
-
-    # If the analyze step fails for one of the languages you are analyzing with
-    # "We were unable to automatically build your code", modify the matrix above
-    # to set the build mode to "manual" for that language. Then modify this step
-    # to build your code.
-    # ℹ️ Command-line programs to run using the OS shell.
-    # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
-    - if: matrix.build-mode == 'manual'
-      shell: bash
+    # CodeQL analyzes whatever the compiler is invoked on during the
+    # traced build. Autobuild found CLI/Package.swift (the SwiftFormat
+    # wrapper) and built only that, so AsyncQueue was never compiled
+    # under the tracer. Build the library target explicitly instead.
+    #
+    # CodeQL's Swift extractor ships x86_64 only, so on Apple Silicon the
+    # tracer falls back to the x86_64 slices of the system binaries it
+    # injects into (/bin/bash, /usr/bin/xcrun), and everything they
+    # spawn runs under Rosetta. Launching the toolchain's own swift with
+    # `arch -arm64`, with Xcode's toolchain first on PATH so swiftc
+    # resolves to Xcode's arm64 binary, keeps SwiftPM and the compiler
+    # native; only the extractor runs under Rosetta.
+    - if: matrix.language == 'swift'
+      name: Build
       run: |
-        echo 'If you are using a "manual" build mode for one or more of the' \
-          'languages you are analyzing, replace this with the commands to build' \
-          'your code, for example:'
-        echo '  make bootstrap'
-        echo '  make release'
-        exit 1
+        DEVELOPER_DIR=$(xcode-select -p)
+        TOOLCHAIN="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+        export PATH="$TOOLCHAIN:$DEVELOPER_DIR/usr/bin:$PATH"
+        SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
+        export SDKROOT
+        arch -arm64 "$TOOLCHAIN/swift" build --target AsyncQueue
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4
