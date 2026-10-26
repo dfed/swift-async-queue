@@ -9,6 +9,10 @@ on:
     - cron: '0 0 * * 1'
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   spm-16:
     name: Build Xcode 26
@@ -98,6 +102,23 @@ jobs:
         with:
           fail_ci_if_error: true
           verbose: true
+  linux-latest-swift:
+    name: "Build and Test on Latest Swift"
+    runs-on: ubuntu-24.04
+    # `swift:latest` floats to the newest Swift release so this job
+    # catches toolchain changes before anyone pins to them. Coverage is
+    # collected by the pinned jobs only, so a different toolchain can't
+    # skew the report.
+    container: swift:latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v6
+      - name: Print Swift Version
+        run: swift --version
+      - name: Build and Test Framework
+        run: swift test -c release -Xswiftc -enable-testing
   readme-validation:
     name: Check Markdown links
     runs-on: ubuntu-latest
@@ -117,5 +138,12 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v6
+      # `swift run` otherwise compiles SwiftFormat from source on every
+      # run. Keyed on the container's Swift version.
+      - name: Cache SwiftFormat Build
+        uses: actions/cache@v6
+        with:
+          path: CLI/.build
+          key: swiftformat-${{ runner.os }}-swift-6.2-${{ hashFiles('CLI/Package.resolved') }}
       - name: Lint Swift
         run: swift run --package-path CLI swiftformat . --lint
