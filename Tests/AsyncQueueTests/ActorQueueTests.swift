@@ -243,13 +243,11 @@ struct ActorQueueTests {
 		var systemUnderTest: ActorQueue<Counter>? = ActorQueue()
 		systemUnderTest?.adoptExecutionContext(of: counter)
 
-		let expectation = Expectation()
 		let semaphore = AsyncQueue.Semaphore()
-		try Task(on: #require(systemUnderTest)) { counter in
+		let task = try Task(on: #require(systemUnderTest)) { counter in
 			// Make the task wait.
 			await semaphore.wait()
 			counter.incrementAndExpectCount(equals: 1)
-			expectation.fulfill()
 		}
 		weak var queue = systemUnderTest
 		// Nil out our reference to the queue to show that the enqueued tasks will still complete
@@ -257,7 +255,9 @@ struct ActorQueueTests {
 		#expect(queue == nil)
 		// Signal the semaphore to unlock the enqueued tasks.
 		await semaphore.signal()
-		await expectation.fulfillment(withinSeconds: 30)
+
+		// Await the enqueued task to deterministically confirm the enqueued work ran after the queue was deallocated.
+		await task.value
 	}
 
 	@Test
@@ -265,15 +265,13 @@ struct ActorQueueTests {
 		var systemUnderTest: ActorQueue<Counter>? = ActorQueue()
 		systemUnderTest?.adoptExecutionContext(of: counter)
 
-		let expectation = Expectation()
 		let semaphore = AsyncQueue.Semaphore()
-		try Task(on: #require(systemUnderTest)) { counter in
+		let task = try Task(on: #require(systemUnderTest)) { counter in
 			try doWork()
 
 			// Make the task wait.
 			await semaphore.wait()
 			counter.incrementAndExpectCount(equals: 1)
-			expectation.fulfill()
 		}
 		weak var queue = systemUnderTest
 		// Nil out our reference to the queue to show that the enqueued tasks will still complete
@@ -281,7 +279,9 @@ struct ActorQueueTests {
 		#expect(queue == nil)
 		// Signal the semaphore to unlock the enqueued tasks.
 		await semaphore.signal()
-		await expectation.fulfillment(withinSeconds: 30)
+
+		// Await the enqueued task to deterministically confirm the enqueued work ran after the queue was deallocated.
+		try await task.value
 	}
 
 	@Test
