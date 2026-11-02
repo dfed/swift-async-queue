@@ -29,7 +29,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Select Xcode Version
         run: sudo xcode-select --switch /Applications/Xcode_26.1.1.app/Contents/Developer
       - name: Download visionOS
@@ -62,7 +62,7 @@ jobs:
         run: ./Scripts/prepare-coverage-reports.sh
       - name: Upload Coverage Reports
         if: success()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           fail_ci_if_error: true
           verbose: true
@@ -73,7 +73,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Select Xcode Version
         run: sudo xcode-select --switch /Applications/Xcode_26.1.1.app/Contents/Developer
       - name: Build and Test Framework
@@ -86,7 +86,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Build and Test Framework
         run: swift test -c release --enable-code-coverage -Xswiftc -enable-testing
       - name: Prepare Coverage Reports
@@ -98,7 +98,7 @@ jobs:
           apt-get install -y --no-install-recommends curl ca-certificates
       - name: Upload Coverage Reports
         if: success()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           fail_ci_if_error: true
           verbose: true
@@ -114,7 +114,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Print Swift Version
         run: swift --version
       - name: Build and Test Framework
@@ -126,9 +126,9 @@ jobs:
       contents: read
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Link Checker
-        uses: AlexanderDokuchaev/md-dead-link-check@d5a37e0b14e5918605d22b34562532762ccb2e47 # v1.2.0
+        uses: AlexanderDokuchaev/md-dead-link-check@5b5641a92ec95d13a5b04927e0e11de5c3405298 # v1.3.0
   lint-swift:
     name: Lint Swift
     runs-on: ubuntu-latest
@@ -137,7 +137,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       # `swift run` otherwise compiles SwiftFormat from source on every
       # run. Keyed on the container's Swift version.
       - name: Cache SwiftFormat Build
