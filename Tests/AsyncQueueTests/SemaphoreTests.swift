@@ -20,122 +20,157 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import Synchronization
 import Testing
 
 @testable import AsyncQueue
 
-final class SemaphoreTests {
-	// MARK: Initialization
-
-	deinit {
-		Task { [systemUnderTest] in
-			let isWaiting = await systemUnderTest.isWaiting
-			#expect(!isWaiting)
-		}
-	}
-
+struct SemaphoreTests {
 	// MARK: Behavior Tests
 
 	@Test
-	func wait_suspendsUntilEqualNumberOfSignalCalls() async {
-		/*
-		 This test is tricky to pull off!
-		 Our requirements:
-		 1. We need to call `wait()` before `signal()`
-		 2. We need to ensure that the `wait()` call suspends _before_ we call `signal()`
-		 3. We can't `await` the `wait()` call on the test's queue before calling `signal()` since that would deadlock the test.
-		 4. We must utilize a single actor's isolated context to avoid accidental interleaving when suspending to communicate across actor contexts.
+	func signal_whenSignalCallsReachSuspendedWaitCalls_resumesEveryWaiterAtOnce() async {
+		let waiters = (1...3).map { _ in Waiter(on: systemUnderTest, executor: executor) }
+		executor.runUntilIdle()
+		// No `signal()` call matches any of the three `wait()` calls, so every waiter suspends.
+		#expect(waiters.map(\.result) == [nil, nil, nil])
 
-		 In order to ensure that we are executing the `wait()` calls before we call `signal()` _without awaiting a `wait()` call_,
-		 we utilize the AsyncQueue.Semaphore's ordered execution context to enqueue ordered `Task`s similar to how an ActorQueue works.
-		 */
+		await systemUnderTest.signal()
+		executor.runUntilIdle()
+		// Two `wait()` calls are still unmatched, so every waiter is still suspended.
+		#expect(waiters.map(\.result) == [nil, nil, nil])
+		let isWaitingAfterFirstSignal = await systemUnderTest.isWaiting
+		#expect(isWaitingAfterFirstSignal)
 
-		let iterationCount = 1_000
-		/// A counter that will only be accessed from within the `systemUnderTest`'s context
-		let unsafeCounter = UnsafeCounter()
+		await systemUnderTest.signal()
+		executor.runUntilIdle()
+		// One `wait()` call is still unmatched, so every waiter is still suspended.
+		#expect(waiters.map(\.result) == [nil, nil, nil])
+		let isWaitingAfterSecondSignal = await systemUnderTest.isWaiting
+		#expect(isWaitingAfterSecondSignal)
 
-		for _ in 1...iterationCount {
-			await systemUnderTest.enqueueAndCount(using: unsafeCounter) { systemUnderTest in
-				let didSuspend = await systemUnderTest.wait()
-				#expect(didSuspend)
-
-				return { systemUnderTest in
-					// Signal that the suspended wait call above has resumed.
-					// This signal allows us to `wait()` for all of these enqueued `wait()` tasks to have completed later in this test.
-					systemUnderTest.signal()
-				}
-			}
-		}
-
-		// Loop one fewer than iterationCount.
-		for _ in 1..<iterationCount {
-			await systemUnderTest.execute { systemUnderTest in
-				systemUnderTest.signal()
-			}
-		}
-
-		await systemUnderTest.execute { systemUnderTest in
-			// Give each suspended `wait` task an opportunity to resume (if they were to resume, which they won't) before we check the count.
-			for _ in 1...iterationCount {
-				await Task.yield()
-			}
-
-			// The count will still be zero each time because we have executed one more `wait` than `signal` calls.
-			let completedCountedTasks = unsafeCounter.countedTasksCompleted
-			#expect(completedCountedTasks == 0)
-
-			// Signal one last time, enabling all of the original `wait` calls to resume.
-			systemUnderTest.signal()
-
-			for _ in 1...iterationCount {
-				// Wait for all enqueued `wait`s to have completed and signaled their completion.
-				await systemUnderTest.wait()
-			}
-
-			let tasksCompleted = unsafeCounter.countedTasksCompleted
-			#expect(iterationCount == tasksCompleted)
-		}
+		await systemUnderTest.signal()
+		executor.runUntilIdle()
+		// Every `wait()` call is matched, so every waiter has resumed.
+		#expect(waiters.map(\.result) == [true, true, true])
+		let isWaitingAfterThirdSignal = await systemUnderTest.isWaiting
+		#expect(!isWaitingAfterThirdSignal)
 	}
 
 	@Test
-	func wait_doesNotSuspendIfSignalCalledFirst() async {
+	func signal_whenSignalCallsReachAThousandSuspendedWaitCalls_resumesEveryWaiterAtOnce() async {
+		let waiterCount = 1_000
+		let waiters = (1...waiterCount).map { _ in Waiter(on: systemUnderTest, executor: executor) }
+		executor.runUntilIdle()
+		// No `signal()` call matches any of the `wait()` calls, so every waiter suspends.
+		#expect(waiters.allSatisfy { $0.result == nil })
+
+		for _ in 1..<waiterCount {
+			await systemUnderTest.signal()
+			executor.runUntilIdle()
+			// At least one `wait()` call is still unmatched, so every waiter is still suspended.
+			#expect(waiters.allSatisfy { $0.result == nil })
+		}
+		let isWaitingBeforeLastSignal = await systemUnderTest.isWaiting
+		#expect(isWaitingBeforeLastSignal)
+
 		await systemUnderTest.signal()
-		let didSuspend = await systemUnderTest.wait()
-		#expect(!didSuspend)
+		executor.runUntilIdle()
+		// Every `wait()` call is matched, so every waiter has resumed.
+		#expect(waiters.allSatisfy { $0.result == true })
+		let isWaitingAfterLastSignal = await systemUnderTest.isWaiting
+		#expect(!isWaitingAfterLastSignal)
+	}
+
+	@Test
+	func wait_whenPrecededByFewerSignalCalls_suspendsOnlyTheUnmatchedWait() async {
+		await systemUnderTest.signal()
+		await systemUnderTest.signal()
+
+		let waiters = (1...3).map { _ in Waiter(on: systemUnderTest, executor: executor) }
+		executor.runUntilIdle()
+		// The two `signal()` calls match the first two `wait()` calls, so only the third waiter suspends.
+		#expect(waiters.map(\.result) == [false, false, nil])
+		let isWaitingBeforeThirdSignal = await systemUnderTest.isWaiting
+		#expect(isWaitingBeforeThirdSignal)
+
+		await systemUnderTest.signal()
+		executor.runUntilIdle()
+		#expect(waiters.map(\.result) == [false, false, true])
+		let isWaitingAfterThirdSignal = await systemUnderTest.isWaiting
+		#expect(!isWaitingAfterThirdSignal)
+	}
+
+	@Test
+	func wait_afterEveryWaiterResumed_suspendsUntilSignaledAgain() async {
+		let firstWaiters = (1...2).map { _ in Waiter(on: systemUnderTest, executor: executor) }
+		executor.runUntilIdle()
+		await systemUnderTest.signal()
+		await systemUnderTest.signal()
+		executor.runUntilIdle()
+		#expect(firstWaiters.map(\.result) == [true, true])
+
+		let secondWaiters = (1...2).map { _ in Waiter(on: systemUnderTest, executor: executor) }
+		executor.runUntilIdle()
+		// The first two `signal()` calls matched the first two `wait()` calls, so the new waiters suspend.
+		#expect(secondWaiters.map(\.result) == [nil, nil])
+
+		await systemUnderTest.signal()
+		executor.runUntilIdle()
+		// One new `wait()` call is still unmatched, so both new waiters are still suspended.
+		#expect(secondWaiters.map(\.result) == [nil, nil])
+		let isWaitingAfterThirdSignal = await systemUnderTest.isWaiting
+		#expect(isWaitingAfterThirdSignal)
+
+		await systemUnderTest.signal()
+		executor.runUntilIdle()
+		#expect(secondWaiters.map(\.result) == [true, true])
+		let isWaitingAfterFourthSignal = await systemUnderTest.isWaiting
+		#expect(!isWaitingAfterFourthSignal)
+	}
+
+	@Test
+	func wait_whenSignalCallIsEnqueuedBehindIt_resumes() async {
+		let waiter = Waiter(on: systemUnderTest, executor: executor)
+		// The executor runs the waiter's `wait()` call before this task's `signal()` call, so the signal reaches a
+		// waiter that has already decremented the count.
+		Task(executorPreference: executor) {
+			await systemUnderTest.signal()
+		}
+		executor.runUntilIdle()
+		#expect(waiter.result == true)
 	}
 
 	// MARK: Private
 
-	private let systemUnderTest = AsyncQueue.Semaphore()
+	private let systemUnderTest = Semaphore()
+	private let executor = ManualTaskExecutor()
 }
 
-// MARK: - AsyncQueue.Semaphore Extension
+// MARK: - Waiter
 
-extension AsyncQueue.Semaphore {
-	/// Enqueues an asynchronous task and increments a counter after the task completes.
-	/// This method suspends the caller until the asynchronous task has begun, ensuring ordered execution of enqueued tasks.
-	/// - Parameter task: A unit of work that returns work to execute after the task completes and the count is incremented.
-	fileprivate func enqueueAndCount(using counter: UnsafeCounter, _ task: @escaping @Sendable (isolated AsyncQueue.Semaphore) async -> (@Sendable (isolated AsyncQueue.Semaphore) -> Void)?) async {
-		// Await the start of the soon-to-be-enqueued `Task` with a continuation.
-		await withCheckedContinuation { continuation in
-			// Re-enter the semaphore's ordered context but don't wait for the result.
-			Task {
-				// Now that we're back in the semaphore's ordered context, allow the calling code to resume.
-				continuation.resume()
-				let executeAfterIncrement = await task(self)
-				counter.countedTasksCompleted += 1
-				executeAfterIncrement?(self)
-			}
+/// A task that calls `wait()` on a semaphore, and that runs only when a test runs its executor.
+///
+/// Calls into the semaphore, a default actor, run on the executor that the calling task prefers. So once a test runs
+/// the executor until it is idle, every waiter has either returned from `wait()` or is suspended in it.
+private final class Waiter: Sendable {
+	// MARK: Initialization
+
+	init(on semaphore: Semaphore, executor: ManualTaskExecutor) {
+		Task(executorPreference: executor) {
+			let didSuspend = await semaphore.wait()
+			self.waitResult.withLock { $0 = didSuspend }
 		}
 	}
 
-	fileprivate func execute(_ task: @Sendable (isolated AsyncQueue.Semaphore) async throws -> Void) async rethrows {
-		try await task(self)
+	// MARK: Internal
+
+	/// What `wait()` returned, which is whether it suspended, or `nil` while `wait()` has not returned.
+	var result: Bool? {
+		waitResult.withLock(\.self)
 	}
-}
 
-// MARK: - UnsafeCounter
+	// MARK: Private
 
-private final class UnsafeCounter: @unchecked Sendable {
-	var countedTasksCompleted = 0
+	private let waitResult = Mutex<Bool?>(nil)
 }
