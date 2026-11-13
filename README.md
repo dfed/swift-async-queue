@@ -5,11 +5,20 @@
 [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fdfed%2Fswift-async-queue%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/dfed/swift-async-queue)
 [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fdfed%2Fswift-async-queue%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/dfed/swift-async-queue)
 
-A library of queues that enable sending ordered tasks from nonisolated to asynchronous contexts.
+When you create several tasks from synchronous or `nonisolated` code, Swift doesn't guarantee the order in which they run, even if they all call the same actor. The queues in this library run tasks in the order you enqueue them.
 
-## Task Ordering and Swift Concurrency
+## Choosing a queue
 
-Tasks sent from a nonisolated context to an asynchronous context in Swift Concurrency are inherently unordered. Consider the following test:
+To enqueue a task, call `Task(on:)` with a queue instead of calling `Task.init`. The closure you pass is the task's *operation*: the code that the task runs. You can call `Task(on:)` from synchronous code. Like `Task.init`, it creates a new task and returns it, so you can wait for its value or cancel it.
+
+- Use a `FIFOQueue` when each task must finish before the next task starts.
+- Use an `ActorQueue` when tasks must start in order on your own actor. The next task can start while an earlier one is suspended.
+- Use `MainActor.queue` when tasks must start in order on the main actor.
+- Use a `CancellableQueue` around a `FIFOQueue` or an `ActorQueue` when you need to cancel all of its tasks at once.
+
+## Running tasks in order
+
+Consider the following test:
 
 ```swift
 @Test
@@ -38,15 +47,14 @@ func actorTaskOrdering() async {
 }
 ```
 
-Because the `Task` is spawned from a nonisolated execution context, the ordering of the scheduled asynchronous work is not guaranteed.
+In the code above, the loop creates the tasks in order, but the tasks can run on the actor in a different order. When they do, the expectation fails. An [actor](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/#Actors) runs only one piece of code at a time, but it doesn't promise to run tasks in the order you create them. The sections below show how each queue runs tasks in the order you enqueue them.
 
-While [actors](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID645) are great at serializing tasks, there is no simple way in the standard Swift library to send ordered tasks to them from a nonisolated synchronous context, or from multiple execution contexts.
+## Running tasks one at a time with `FIFOQueue`
 
-### Executing asynchronous tasks in FIFO order
+A `FIFOQueue` runs one task at a time, in the order you enqueue them: first in, first out. Each task waits until every task enqueued before it has finished. A task that is suspended at an `await` hasn't finished, so the next task keeps waiting. As a result, tasks start and finish in the order you enqueue them.
 
-Use a `FIFOQueue` to execute asynchronous tasks enqueued from a nonisolated context in FIFO order. Tasks sent to one of these queues are guaranteed to begin _and end_ executing in the order in which they are enqueued. A `FIFOQueue` executes tasks in a similar manner to a `DispatchQueue`: enqueued tasks execute atomically, and the program will deadlock if a task executing on a `FIFOQueue` awaits results from the queue on which it is executing.
+For example, here's how you might use a `FIFOQueue` so that the counter counts in order:
 
-A `FIFOQueue` can easily execute asynchronous tasks from a nonisolated context in FIFO order:
 ```swift
 @Test
 func fIFOQueueOrdering() async {
@@ -80,23 +88,35 @@ func fIFOQueueOrdering() async {
 }
 ```
 
-FIFO execution has a key downside: the queue must wait for all previously enqueued work – including suspended work – to complete before new work can begin. If you desire new work to start when a prior task suspends, utilize an `ActorQueue`.
+In the code above, `incrementAndAssertCountEquals(_:)` is `nonisolated`, so synchronous code can call it. The operation runs with the same actor isolation as the code that enqueues it, like a task you create with `Task.init`. Here, that code is `nonisolated`, so the operation uses `await` to call the actor.
 
-### Sending ordered asynchronous tasks to Actors from a nonisolated context
+Keep these points in mind when you use a `FIFOQueue`:
 
-Use an `ActorQueue` to send ordered asynchronous tasks to an `actor`'s isolated context from nonisolated or synchronous contexts. Tasks sent to an actor queue are guaranteed to begin executing in the order in which they are enqueued. However, unlike a `FIFOQueue`, execution order is guaranteed only until the first [suspension point](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID639) within the enqueued task. An `ActorQueue` executes tasks within its adopted actor's isolated context, resulting in `ActorQueue` task execution having the same properties as `actor` code execution: code between suspension points is executed atomically, and tasks sent to a single `ActorQueue` can await results from the queue without deadlocking.
+- To run the operation on an actor, call `Task(on:isolatedTo:)` with that actor. The operation receives the actor, so it can use the actor's state without `await`.
+- If the next task should start while one is suspended at an `await`, use an `ActorQueue`.
+- Inside a task on a `FIFOQueue`, don't await another task that you enqueue on the same queue. The new task waits for the current task to finish, and the current task waits for the new one, so both wait forever.
 
-An instance of an `ActorQueue` is designed to be utilized by a single `actor` instance: tasks sent to an `ActorQueue` utilize the isolated context of the queue‘s adopted `actor` to serialize tasks. As such, there are a couple requirements that must be met when dealing with an `ActorQueue`:
-1. The lifecycle of any `ActorQueue` should not exceed the lifecycle of its `actor`. It is strongly recommended that an `ActorQueue` be a `private let` constant on the adopted `actor`. Enqueuing a task to an `ActorQueue` instance after its adopted `actor` has been deallocated will result in a crash.
-2. An `actor` utilizing an `ActorQueue` should set the adopted execution context of the queue to `self` within the `actor`’s `init`. Failing to set an adopted execution context prior to enqueuing work on an `ActorQueue` will result in a crash.
+## Running tasks on your actor with `ActorQueue`
 
-An `ActorQueue` can easily enqueue tasks that execute on an actor’s isolated context from a nonisolated context in order:
+An `ActorQueue` runs tasks on your own actor, and the tasks start in the order you enqueue them. Once a task starts, it behaves like any other code on the actor:
+
+- When the task suspends at an `await`, the next task can start.
+- Between [suspension points](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/#Defining-and-Calling-Asynchronous-Functions), the task runs without interruption from other code on the actor.
+- A task can enqueue another task on the same queue and await its value.
+
+Each `ActorQueue` belongs to one actor. To set one up:
+
+1. Store the queue in a `private let` property of the actor, so that the queue can't outlive the actor. Enqueuing a task after the actor is deallocated crashes.
+2. In the actor's `init`, call `queue.adoptExecutionContext(of: self)` once. This tells the queue which actor to run its tasks on. Enqueuing a task before this call crashes.
+
+For example, here's the counter again, using an `ActorQueue`:
+
 ```swift
 @Test
 func actorQueueOrdering() async {
     actor Counter {
         init() {
-            // Adopting the execution context in `init` satisfies requirement #2 above.
+            // Calling `adoptExecutionContext(of:)` in `init` is step 2 above.
             queue.adoptExecutionContext(of: self)
         }
 
@@ -109,7 +129,7 @@ func actorQueueOrdering() async {
         }
 
         private var count = 0
-        // Making the queue a private let constant satisfies requirement #1 above.
+        // Storing the queue in a `private let` property is step 1 above.
         private let queue = ActorQueue<Counter>()
     }
 
@@ -125,11 +145,16 @@ func actorQueueOrdering() async {
 }
 ```
 
-### Sending ordered asynchronous tasks to the `@MainActor` from a nonisolated context
+In the code above, the operation receives the actor as `myself`. The operation runs on the actor, so it reads and changes `count` without `await`.
 
-Use `MainActor.queue` to send ordered asynchronous tasks to the `@MainActor`’s isolated context from nonisolated or synchronous contexts. Tasks sent to this queue type are guaranteed to begin executing in the order in which they are enqueued. The `MainActor.queue` is an `ActorQueue` that runs within the `@MainActor` global context: execution order is guaranteed only until the first [suspension point](https://docs.swift.org/swift-book/LanguageGuide/Concurrency.html#ID639) within the enqueued task. Similarly, code between suspension points is executed atomically, and tasks sent to the `MainActor.queue` can await results from the queue without deadlocking.
+To wait for an operation's result, await the task's value. For example, a method of `Counter` could read the count with `let count = await Task(on: queue) { myself in myself.count }.value`.
 
-A `MainActor.queue` can easily execute asynchronous tasks from a nonisolated context in FIFO order:
+## Running tasks on the main actor with `MainActor.queue`
+
+`MainActor.queue` is an `ActorQueue` that runs tasks on the main actor. It's ready to use, with no setup. As with any `ActorQueue`, tasks start in the order you enqueue them, and when a task suspends at an `await`, the next task can start.
+
+For example, here's how you might enqueue tasks on the main actor from a `nonisolated` method:
+
 ```swift
 @MainActor
 @Test
@@ -164,11 +189,15 @@ func mainActorQueueOrdering() async {
 }
 ```
 
-### Cancelling all executing and pending tasks
+In the code above, the operation runs on the main actor, so it uses `self` without `await`.
 
-Use a `CancellableQueue` to wrap a `FIFOQueue` or `ActorQueue` when you need the ability to cancel all currently executing and pending tasks at once. This is useful for scenarios like cancelling in-flight network requests when a view disappears, or abandoning a batch of operations when a user initiates a new action.
+## Cancelling tasks with `CancellableQueue`
 
-A `CancellableQueue` wraps an underlying queue and tracks all tasks enqueued on it. Calling `cancelTasks()` will cancel both the currently executing task and any tasks waiting in the queue. Tasks that have already completed are unaffected, and tasks enqueued after `cancelTasks()` is called will execute normally.
+A `CancellableQueue` wraps a `FIFOQueue` or an `ActorQueue` and lets you cancel all of its tasks at once. For example, you might cancel a view's network requests when the view disappears, or cancel the work for a search when the user starts a new one.
+
+- Calling `cancelTasks()` cancels every unfinished task that you enqueued on the `CancellableQueue`, whether it's running or waiting.
+- Tasks that already finished aren't affected. Tasks you enqueue afterward run as usual.
+- [Cancellation](#cancellation) is cooperative, so the operation should check for cancellation, as `loadImage(from:)` does below.
 
 ```swift
 @Test
@@ -181,17 +210,17 @@ func cancellableQueueExample() async {
         }
 
         nonisolated
-        func loadImage(from url: URL) -> Task<UIImage?, Never> {
+        func loadImage(from url: URL) -> Task<UIImage?, any Error> {
             Task(on: cancellableQueue) { myself in
                 guard let image = try await myself.fetchImage(from: url) else { return nil }
                 try Task.checkCancellation()
-                return myself.processImage(image)
+                return await myself.processImage(image)
             }
         }
 
         nonisolated
         func cancelAllLoads() {
-            // Cancels the currently loading image and any queued load requests.
+            // Cancels the image that is loading and the loads that are waiting.
             cancellableQueue.cancelTasks()
         }
 
@@ -213,7 +242,7 @@ func cancellableQueueExample() async {
     let task2 = loader.loadImage(from: URL(string: "https://example.com/2.png")!)
     let task3 = loader.loadImage(from: URL(string: "https://example.com/3.png")!)
 
-    // Cancel all pending and executing loads.
+    // Cancel every load that hasn't finished.
     loader.cancelAllLoads()
 
     // All tasks are now cancelled.
@@ -223,25 +252,64 @@ func cancellableQueueExample() async {
 }
 ```
 
-A `CancellableQueue` can also wrap a `FIFOQueue` for FIFO-ordered cancellable tasks:
+In the code above, each load calls `Task.checkCancellation()` after it fetches the image. A cancelled load throws `CancellationError` there, so it doesn't process the image.
+
+A `CancellableQueue` can also wrap a `FIFOQueue`:
+
 ```swift
 let cancellableQueue = CancellableQueue(underlyingQueue: FIFOQueue())
 
 Task(on: cancellableQueue) {
-    // This work can be cancelled via cancellableQueue.cancelTasks()
+    // Calling `cancellableQueue.cancelTasks()` cancels this task.
     await performWork()
 }
 ```
 
+## Task-local values, priority, and cancellation
+
+`Task(on:)` creates a new [unstructured task](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/#Unstructured-Concurrency), as `Task.init` does, and your operation runs in that task. So the task behaves like a task you create with `Task.init`.
+
+### Task-local values
+
+Your operation sees the [task-local values](https://developer.apple.com/documentation/swift/tasklocal) of the code that enqueues it, as with `Task.init`.
+
+### Priority
+
+- A task runs at the priority you pass to `Task(on:)`. If you pass `nil`, it runs at the priority of the code that enqueues it, as with `Task.init`.
+- `FIFOQueue(priority:)` gives each of the queue's tasks at least that priority. A task that would run at a lower priority runs at the queue's priority instead.
+- When a higher-priority task awaits a task's value, Swift raises, or *escalates*, that task's priority, as it does for any task.
+
+### Cancellation
+
+Cancellation is [cooperative](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/#Task-Cancellation), as it is for any Swift task:
+
+- Calling a task's `cancel()` method, or calling `cancelTasks()` on the `CancellableQueue` you enqueued it on, marks the task as cancelled right away.
+- The task keeps its place in the queue. Its operation still runs, in the same order as if you hadn't cancelled it.
+- The operation decides how to respond. It can check `Task.isCancelled`, or call `Task.checkCancellation()` to throw a `CancellationError`.
+- An operation that doesn't check for cancellation runs to completion, and the tasks behind it wait for it as usual.
+
+## Migrating from 1.x
+
+- **Swift and platform versions.** Version 2.0 requires Swift 6.4 and newer platform versions; see [Installation](#installation). Update your toolchain and deployment targets.
+- **Priority.** An operation you enqueue without a priority now runs at the priority of the code that enqueues it. In 1.x, a `FIFOQueue` created without a priority ran it at `.medium`, and an `ActorQueue` ran it at the priority of the code that created the queue.
+  - On a `FIFOQueue`, a task enqueued from low-priority code now runs at low priority, and the tasks behind it wait for it. To keep the 1.x priority, create the queue with `FIFOQueue(priority: .medium)`.
+  - On an `ActorQueue`, pass `priority:` to `Task(on:)` when you enqueue important work from low-priority code.
+- **Task-local values.** An operation now sees the task-local values of the code that enqueues it. In 1.x, an operation on an `ActorQueue` saw the values of the code that created the queue, and an operation on a `FIFOQueue` saw none. You need to change your code only if an operation relied on the 1.x values.
+- **Queue names.** `FIFOQueue(name:priority:)` and `ActorQueue(name:)` are removed, because operations now run in the task that `Task(on:)` returns. Use `FIFOQueue(priority:)` and `ActorQueue()`, and pass `name:` to `Task(on:)` to name each task instead.
+
 ## Installation
 
-To install swift-async-queue in your project with [Swift Package Manager](https://github.com/apple/swift-package-manager), the following lines can be added to your `Package.swift` file:
+swift-async-queue requires Swift 6.4, and macOS 15, iOS 18, tvOS 18, watchOS 11, Mac Catalyst 18, or visionOS 2 or later. It also runs on Linux.
+
+To install swift-async-queue in your project with [Swift Package Manager](https://github.com/apple/swift-package-manager), add the following lines to your `Package.swift` file:
 
 ```swift
 dependencies: [
     .package(url: "https://github.com/dfed/swift-async-queue", from: "2.0.0"),
 ]
 ```
+
+Then add `AsyncQueue` to your target's dependencies, and write `import AsyncQueue` in each file that uses a queue.
 
 ## Contributing
 
