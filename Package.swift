@@ -1,4 +1,4 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.4
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -6,12 +6,13 @@ import PackageDescription
 let package = Package(
 	name: "swift-async-queue",
 	platforms: [
-		.macOS(.v10_15),
-		.iOS(.v13),
-		.tvOS(.v13),
-		.watchOS(.v6),
-		.macCatalyst(.v13),
-		.visionOS(.v1),
+		// The minimum versions that support `Mutex`.
+		.macOS(.v15),
+		.iOS(.v18),
+		.tvOS(.v18),
+		.watchOS(.v11),
+		.macCatalyst(.v18),
+		.visionOS(.v2),
 	],
 	products: [
 		.library(

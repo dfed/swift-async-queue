@@ -21,49 +21,49 @@ enum TaskError: Error {
 }
 
 enum Platform: String, CaseIterable, CustomStringConvertible {
-	case iOS_18
-	case tvOS_18
-	case macOS_26
-	case macCatalyst_15
-	case watchOS_11
-	case visionOS_2
+	case iOS
+	case tvOS
+	case macOS
+	case macCatalyst
+	case watchOS
+	case visionOS
 
 	var destination: String {
 		switch self {
-		case .iOS_18:
-			"platform=iOS Simulator,OS=18.5,name=iPad (10th generation)"
+		case .iOS:
+			"platform=iOS Simulator,OS=27.2,name=iPad (A16)"
 
-		case .tvOS_18:
-			"platform=tvOS Simulator,OS=18.5,name=Apple TV"
+		case .tvOS:
+			"platform=tvOS Simulator,OS=27.2,name=Apple TV 4K (4th generation)"
 
-		case .macOS_26,
-			 .macCatalyst_15:
+		case .macOS,
+			 .macCatalyst:
 			"platform=OS X"
 
-		case .watchOS_11:
-			"OS=11.5,name=Apple Watch Series 10 (46mm)"
+		case .watchOS:
+			"OS=27.2,name=Apple Watch Series 12 (46mm)"
 
-		case .visionOS_2:
-			"OS=2.5,name=Apple Vision Pro"
+		case .visionOS:
+			"OS=27.2,name=Apple Vision Pro"
 		}
 	}
 
 	var sdk: String {
 		switch self {
-		case .iOS_18:
+		case .iOS:
 			"iphonesimulator"
 
-		case .tvOS_18:
+		case .tvOS:
 			"appletvsimulator"
 
-		case .macOS_26,
-			 .macCatalyst_15:
-			"macosx26.1"
+		case .macOS,
+			 .macCatalyst:
+			"macosx27.2"
 
-		case .watchOS_11:
+		case .watchOS:
 			"watchsimulator"
 
-		case .visionOS_2:
+		case .visionOS:
 			"xrsimulator"
 		}
 	}

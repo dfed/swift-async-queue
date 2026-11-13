@@ -37,14 +37,11 @@ func suspendUntilCancelled() async {
 
 /// A serial executor that runs its jobs on a dispatch queue of its own, in the order in which they are enqueued.
 final class DispatchQueueExecutor: SerialExecutor {
-	func enqueue(_ job: UnownedJob) {
+	func enqueue(_ job: consuming ExecutorJob) {
+		let job = UnownedJob(job)
 		dispatchQueue.async { [self] in
 			job.runSynchronously(on: asUnownedSerialExecutor())
 		}
-	}
-
-	func asUnownedSerialExecutor() -> UnownedSerialExecutor {
-		UnownedSerialExecutor(ordinary: self)
 	}
 
 	private let dispatchQueue = DispatchQueue(label: "DispatchQueueExecutor")
