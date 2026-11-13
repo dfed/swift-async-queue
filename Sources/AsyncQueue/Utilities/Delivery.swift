@@ -32,10 +32,13 @@ actor Delivery<Success: Sendable, Failure: Error> {
 	}
 
 	nonisolated func cancel() {
-		taskContainer.withLock {
+		let task = taskContainer.withLock {
 			$0.isCancelled = true
-			$0.task?.cancel()
+			return $0.task
 		}
+		// Cancelling a task synchronously runs its cancellation handlers, which may cancel other tasks.
+		// Cancel only after releasing the lock so that those handlers can never re-enter it.
+		task?.cancel()
 	}
 
 	@discardableResult
@@ -50,11 +53,13 @@ actor Delivery<Success: Sendable, Failure: Error> {
 		let task = Task(name: name, priority: priority) {
 			await operation(context)
 		}
-		taskContainer.withLock {
-			if $0.isCancelled {
-				task.cancel()
-			}
+		let isCancelled = taskContainer.withLock {
 			$0.task = task
+			return $0.isCancelled
+		}
+		if isCancelled {
+			// Cancel only after releasing the lock. See `cancel()`.
+			task.cancel()
 		}
 		return task
 	}
@@ -120,8 +125,10 @@ private struct Locked<State>: @unchecked Sendable {
 		container = .init(value: value)
 	}
 
+	/// Executes `body` while holding the lock.
+	/// - Warning: `body` must not cancel a task, resume a continuation, or otherwise call out to code that may re-enter this lock.
 	func withLock<R>(_ body: @Sendable (inout State) throws -> R) rethrows -> R where R: Sendable {
-		try lockQueue.sync {
+		try container.lockQueue.sync {
 			var value = container.unsafeValue
 			let returnValue = try body(&value)
 			container.unsafeValue = value
@@ -137,7 +144,6 @@ private struct Locked<State>: @unchecked Sendable {
 		}
 
 		var unsafeValue: State
+		let lockQueue = DispatchQueue(label: "Locked.lockQueue", target: DispatchQueue.global())
 	}
 }
-
-private let lockQueue = DispatchQueue(label: "LockedValue.lockQueue", target: DispatchQueue.global())

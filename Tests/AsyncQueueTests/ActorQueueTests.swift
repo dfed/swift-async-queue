@@ -334,6 +334,46 @@ struct ActorQueueTests {
 		try? await task.value
 	}
 
+	@MainActor
+	@Test
+	func mainTask_cancelledWhileMainActorIsBusy_executesOperationCancelled() async {
+		let task = Task(on: MainActor.queue) {
+			Task.isCancelled
+		}
+
+		// The task's operation cannot begin until this test suspends and frees the main actor,
+		// so this cancels the task before its operation begins.
+		task.cancel()
+
+		#expect(await task.value)
+	}
+
+	@Test
+	func task_canBeCancelledFromCancellationHandlerOfAnotherQueuedTask() async {
+		let taskStarted = Semaphore()
+		let innerTaskStarted = Semaphore()
+		let task = Task(on: systemUnderTest) { [systemUnderTest] _ in
+			let innerTask = Task(on: systemUnderTest) { _ in
+				await innerTaskStarted.signal()
+				await suspendUntilCancelled()
+				return Task.isCancelled
+			}
+			return await withTaskCancellationHandler {
+				// Wait for the inner operation to start, so that cancelling the inner task runs its cancellation handler.
+				await innerTaskStarted.wait()
+				await taskStarted.signal()
+				return await innerTask.value
+			} onCancel: {
+				innerTask.cancel()
+			}
+		}
+		await taskStarted.wait()
+		task.cancel()
+		// The inner task returns only once it is cancelled, so if cancellation does not reach it, this test hangs rather
+		// than failing the expectation.
+		#expect(await task.value)
+	}
+
 	@Test
 	func task_canReturn() async {
 		let expectedValue = UUID()

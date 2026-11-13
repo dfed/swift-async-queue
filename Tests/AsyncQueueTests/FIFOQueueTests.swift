@@ -416,6 +416,50 @@ struct FIFOQueueTests {
 	}
 
 	@Test
+	func task_cancelledWhileWaitingForPriorTask_executesOperationCancelled() async {
+		let priorTaskAllowedToEnd = Semaphore()
+		Task(on: systemUnderTest) {
+			await priorTaskAllowedToEnd.wait()
+		}
+		let task = Task(on: systemUnderTest) {
+			Task.isCancelled
+		}
+
+		// The task's operation cannot begin until the prior task ends, so this cancels the task before its operation begins.
+		task.cancel()
+		await priorTaskAllowedToEnd.signal()
+
+		#expect(await task.value)
+	}
+
+	@Test
+	func task_canBeCancelledFromCancellationHandlerOfAnotherQueuedTask() async {
+		let otherQueue = FIFOQueue()
+		let taskStarted = Semaphore()
+		let innerTaskStarted = Semaphore()
+		let task = Task(on: systemUnderTest) {
+			let innerTask = Task(on: otherQueue) {
+				await innerTaskStarted.signal()
+				await suspendUntilCancelled()
+				return Task.isCancelled
+			}
+			return await withTaskCancellationHandler {
+				// Wait for the inner operation to start, so that cancelling the inner task runs its cancellation handler.
+				await innerTaskStarted.wait()
+				await taskStarted.signal()
+				return await innerTask.value
+			} onCancel: {
+				innerTask.cancel()
+			}
+		}
+		await taskStarted.wait()
+		task.cancel()
+		// The inner task returns only once it is cancelled, so if cancellation does not reach it, this test hangs rather
+		// than failing the expectation.
+		#expect(await task.value)
+	}
+
+	@Test
 	func task_canReturn() async {
 		let expectedValue = UUID()
 		let returnedValue = await Task(on: systemUnderTest) { expectedValue }.value
