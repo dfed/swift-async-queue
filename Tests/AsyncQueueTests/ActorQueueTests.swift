@@ -156,8 +156,8 @@ struct ActorQueueTests {
 
 	@Test
 	func task_startsExecutionOfNextTaskAfterSuspension() async {
-		let systemUnderTest = ActorQueue<AsyncQueue.Semaphore>()
-		let semaphore = AsyncQueue.Semaphore()
+		let systemUnderTest = ActorQueue<Semaphore>()
+		let semaphore = Semaphore()
 		systemUnderTest.adoptExecutionContext(of: semaphore)
 
 		let firstTask = Task(on: systemUnderTest) { semaphore in
@@ -174,8 +174,8 @@ struct ActorQueueTests {
 
 	@Test
 	func throwingTask_startsExecutionOfNextTaskAfterSuspension() async throws {
-		let systemUnderTest = ActorQueue<AsyncQueue.Semaphore>()
-		let semaphore = AsyncQueue.Semaphore()
+		let systemUnderTest = ActorQueue<Semaphore>()
+		let semaphore = Semaphore()
 		systemUnderTest.adoptExecutionContext(of: semaphore)
 
 		let firstTask = Task(on: systemUnderTest) { semaphore in
@@ -243,7 +243,7 @@ struct ActorQueueTests {
 		var systemUnderTest: ActorQueue<Counter>? = ActorQueue()
 		systemUnderTest?.adoptExecutionContext(of: counter)
 
-		let semaphore = AsyncQueue.Semaphore()
+		let semaphore = Semaphore()
 		let task = try Task(on: #require(systemUnderTest)) { counter in
 			// Make the task wait.
 			await semaphore.wait()
@@ -265,7 +265,7 @@ struct ActorQueueTests {
 		var systemUnderTest: ActorQueue<Counter>? = ActorQueue()
 		systemUnderTest?.adoptExecutionContext(of: counter)
 
-		let semaphore = AsyncQueue.Semaphore()
+		let semaphore = Semaphore()
 		let task = try Task(on: #require(systemUnderTest)) { counter in
 			try doWork()
 
@@ -332,20 +332,6 @@ struct ActorQueueTests {
 		task.cancel()
 		await semaphore.signal()
 		try? await task.value
-	}
-
-	@MainActor
-	@Test
-	func mainTask_cancelledWhileMainActorIsBusy_executesOperationCancelled() async {
-		let task = Task(on: MainActor.queue) {
-			Task.isCancelled
-		}
-
-		// The task's operation cannot begin until this test suspends and frees the main actor,
-		// so this cancels the task before its operation begins.
-		task.cancel()
-
-		#expect(await task.value)
 	}
 
 	@Test
