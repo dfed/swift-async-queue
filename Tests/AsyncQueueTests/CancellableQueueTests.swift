@@ -699,6 +699,29 @@ struct CancellableQueueTests {
 		#expect(!task.isCancelled)
 	}
 
+	@Test
+	func task_seesCallersTaskLocalValues() async throws {
+		let fifoQueue = CancellableQueue(underlyingQueue: FIFOQueue())
+		let actorQueue = ActorQueue<Counter>()
+		let counter = Counter()
+		actorQueue.adoptExecutionContext(of: counter)
+		let cancellableActorQueue = CancellableQueue(underlyingQueue: actorQueue)
+		let cancellableMainActorQueue = CancellableQueue(underlyingQueue: MainActor.queue)
+		let values = try await TestTaskLocal.$value.withValue("caller") {
+			try await [
+				Task(on: fifoQueue) { TestTaskLocal.value }.value,
+				Task(on: fifoQueue) { try doWork(); return TestTaskLocal.value }.value,
+				Task(on: fifoQueue, isolatedTo: counter) { _ in TestTaskLocal.value }.value,
+				Task(on: fifoQueue, isolatedTo: counter) { _ in try doWork(); return TestTaskLocal.value }.value,
+				Task(on: cancellableActorQueue) { _ in TestTaskLocal.value }.value,
+				Task(on: cancellableActorQueue) { _ in try doWork(); return TestTaskLocal.value }.value,
+				Task(on: cancellableMainActorQueue) { TestTaskLocal.value }.value,
+				Task(on: cancellableMainActorQueue) { try doWork(); return TestTaskLocal.value }.value,
+			]
+		}
+		#expect(values == Array(repeating: "caller", count: 8))
+	}
+
 	// MARK: Private
 
 	private struct TestError: Error {}
