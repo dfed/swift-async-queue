@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import Dispatch
+import Synchronization
 
 actor Delivery<Success: Sendable, Failure: Error> {
 	func sendValue(_ value: Success) {
@@ -83,7 +83,8 @@ actor Delivery<Success: Sendable, Failure: Error> {
 	}
 
 	private var valueContinuations: [UnsafeContinuation<Success, Failure>] = []
-	private let taskContainer = Locked(value: TaskContainer())
+	/// Never cancel a task while holding this lock: cancellation handlers run synchronously and may cancel other tasks.
+	private let taskContainer = Mutex(TaskContainer())
 
 	struct TaskContainer {
 		var task: Task<Void, Never>?
@@ -114,36 +115,5 @@ extension Delivery where Failure == any Error {
 				valueContinuations.append(continuation)
 			}
 		}
-	}
-}
-
-// MARK: - Locked
-
-// We'd use `OSAllocatedUnfairLock` or `Mutex` but the minimum supported version is much higher than what we support.
-private struct Locked<State>: @unchecked Sendable {
-	init(value: State) {
-		container = .init(value: value)
-	}
-
-	/// Executes `body` while holding the lock.
-	/// - Warning: `body` must not cancel a task, resume a continuation, or otherwise call out to code that may re-enter this lock.
-	func withLock<R>(_ body: @Sendable (inout State) throws -> R) rethrows -> R where R: Sendable {
-		try container.lockQueue.sync {
-			var value = container.unsafeValue
-			let returnValue = try body(&value)
-			container.unsafeValue = value
-			return returnValue
-		}
-	}
-
-	private let container: UnsafeContainer
-
-	private final class UnsafeContainer: @unchecked Sendable {
-		init(value: State) {
-			unsafeValue = value
-		}
-
-		var unsafeValue: State
-		let lockQueue = DispatchQueue(label: "Locked.lockQueue", target: DispatchQueue.global())
 	}
 }
