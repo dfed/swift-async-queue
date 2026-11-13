@@ -435,6 +435,203 @@ struct ActorQueueTests {
 		}.value
 	}
 
+	@Test
+	func task_holdsTurnUntilItIsIsolatedToActor() async {
+		let actor = ManuallyExecutedActor()
+		var enqueuedJobs = actor.executor.enqueuedJobs.makeAsyncIterator()
+		let task = Task(on: actor.queue) { _ in }
+		// Wait for the task to hop to the actor, whose executor holds the task's job until the test runs it.
+		_ = await enqueuedJobs.next()
+		// The task holds its turn until it is isolated to the actor, so the next turn cannot begin yet.
+		let hasNextTurnBegun = probeNextTurn(of: actor.queue.turns)
+		let didNextTurnBeginBeforeTaskWasIsolatedToActor = hasNextTurnBegun()
+		// Running the task's job isolates the task to the actor, which ends its turn.
+		actor.executor.runUntilIdle()
+		await task.value
+		let didNextTurnBeginAfterTaskCompleted = hasNextTurnBegun()
+		#expect(!didNextTurnBeginBeforeTaskWasIsolatedToActor)
+		#expect(didNextTurnBeginAfterTaskCompleted)
+	}
+
+	@Test
+	func throwingTask_holdsTurnUntilItIsIsolatedToActor() async throws {
+		let actor = ManuallyExecutedActor()
+		var enqueuedJobs = actor.executor.enqueuedJobs.makeAsyncIterator()
+		let task = Task(on: actor.queue) { _ in try doWork() }
+		// Wait for the task to hop to the actor, whose executor holds the task's job until the test runs it.
+		_ = await enqueuedJobs.next()
+		// The task holds its turn until it is isolated to the actor, so the next turn cannot begin yet.
+		let hasNextTurnBegun = probeNextTurn(of: actor.queue.turns)
+		let didNextTurnBeginBeforeTaskWasIsolatedToActor = hasNextTurnBegun()
+		// Running the task's job isolates the task to the actor, which ends its turn.
+		actor.executor.runUntilIdle()
+		try await task.value
+		let didNextTurnBeginAfterTaskCompleted = hasNextTurnBegun()
+		#expect(!didNextTurnBeginBeforeTaskWasIsolatedToActor)
+		#expect(didNextTurnBeginAfterTaskCompleted)
+	}
+
+	@Test
+	func mainTask_holdsTurnUntilItIsIsolatedToMainActor() async {
+		// Use a queue of our own rather than `MainActor.queue`, which tests running in parallel share.
+		let mainActorQueue = ActorQueue<MainActor>()
+		mainActorQueue.adoptExecutionContext(of: MainActor.shared)
+		let executor = ManualTaskExecutor()
+		// While this closure holds the main actor, the task cannot be isolated to it, so its turn cannot end.
+		let task = await MainActor.run {
+			let task = Task(on: mainActorQueue) {}
+			let nextTurn = mainActorQueue.turns.reserve()
+			Task(executorPreference: executor) {
+				await nextTurn.begin()
+				nextTurn.end()
+			}
+			// Run the probe until it waits for its turn.
+			executor.runUntilIdle()
+			return task
+		}
+		await task.value
+		executor.runUntilIdle()
+		// The probe is enqueued when it is created, here on the main actor, and again by whoever ends the task's turn.
+		// `false` for the second job means that the task's turn ended before the task was isolated to the main actor.
+		#expect(executor.wasEachJobEnqueuedOnMainQueue == [true, true])
+	}
+
+	@Test
+	func mainThrowingTask_holdsTurnUntilItIsIsolatedToMainActor() async throws {
+		// Use a queue of our own rather than `MainActor.queue`, which tests running in parallel share.
+		let mainActorQueue = ActorQueue<MainActor>()
+		mainActorQueue.adoptExecutionContext(of: MainActor.shared)
+		let executor = ManualTaskExecutor()
+		// While this closure holds the main actor, the task cannot be isolated to it, so its turn cannot end.
+		let task = await MainActor.run {
+			let task = Task(on: mainActorQueue) { try doWork() }
+			let nextTurn = mainActorQueue.turns.reserve()
+			Task(executorPreference: executor) {
+				await nextTurn.begin()
+				nextTurn.end()
+			}
+			// Run the probe until it waits for its turn.
+			executor.runUntilIdle()
+			return task
+		}
+		try await task.value
+		executor.runUntilIdle()
+		// The probe is enqueued when it is created, here on the main actor, and again by whoever ends the task's turn.
+		// `false` for the second job means that the task's turn ended before the task was isolated to the main actor.
+		#expect(executor.wasEachJobEnqueuedOnMainQueue == [true, true])
+	}
+
+	@Test
+	func task_seesCallersTaskLocalValues() async throws {
+		// Create the queue while a task-local value is bound: enqueued tasks must see their caller's values instead.
+		let systemUnderTest = TestTaskLocal.$value.withValue("queue creator") {
+			ActorQueue<Counter>()
+		}
+		systemUnderTest.adoptExecutionContext(of: counter)
+		let (value, throwingValue) = try await TestTaskLocal.$value.withValue("caller") {
+			try await (
+				Task(on: systemUnderTest) { _ in TestTaskLocal.value }.value,
+				Task(on: systemUnderTest) { _ in try doWork(); return TestTaskLocal.value }.value,
+			)
+		}
+		#expect(value == "caller")
+		#expect(throwingValue == "caller")
+		#expect(await Task(on: systemUnderTest) { _ in TestTaskLocal.value }.value == "default")
+	}
+
+	@Test
+	func mainTask_seesCallersTaskLocalValues() async throws {
+		let (value, throwingValue) = try await TestTaskLocal.$value.withValue("caller") {
+			try await (
+				Task(on: MainActor.queue) { TestTaskLocal.value }.value,
+				Task(on: MainActor.queue) { try doWork(); return TestTaskLocal.value }.value,
+			)
+		}
+		#expect(value == "caller")
+		#expect(throwingValue == "caller")
+		#expect(await Task(on: MainActor.queue) { TestTaskLocal.value }.value == "default")
+	}
+
+	@Test
+	func task_withNilPriority_inheritsCallersPriority() async {
+		// Use a queue of our own rather than `MainActor.queue`, which tests running in parallel share.
+		let mainActorQueue = ActorQueue<MainActor>()
+		mainActorQueue.adoptExecutionContext(of: MainActor.shared)
+		for priority in [TaskPriority.background, .low, .medium, .high] {
+			let executionPriorities = await [
+				priorityOfTask(enqueuedFromTaskWithPriority: priority) { [systemUnderTest] report in
+					Task(on: systemUnderTest) { _ in report(Task.currentPriority) }
+				},
+				priorityOfTask(enqueuedFromTaskWithPriority: priority) { [systemUnderTest] report in
+					Task(on: systemUnderTest) { _ in try doWork(); report(Task.currentPriority) }
+				},
+				priorityOfTask(enqueuedFromTaskWithPriority: priority) { report in
+					Task(on: mainActorQueue) { report(Task.currentPriority) }
+				},
+				priorityOfTask(enqueuedFromTaskWithPriority: priority) { report in
+					Task(on: mainActorQueue) { try doWork(); report(Task.currentPriority) }
+				},
+			]
+			#expect(executionPriorities == Array(repeating: priority, count: 4))
+		}
+	}
+
+	@Test
+	func task_withPriority_executesAtThatPriority() async {
+		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+		// Use a queue of our own rather than `MainActor.queue`, which tests running in parallel share.
+		let mainActorQueue = ActorQueue<MainActor>()
+		mainActorQueue.adoptExecutionContext(of: MainActor.shared)
+		await Task.detached(priority: .high) { [systemUnderTest] in
+			// Do not await these tasks: awaiting them from this task would escalate them.
+			Task(priority: .low, on: systemUnderTest) { _ in
+				prioritiesContinuation.yield(Task.currentPriority)
+			}
+			Task(priority: .low, on: mainActorQueue) {
+				prioritiesContinuation.yield(Task.currentPriority)
+			}
+		}.value
+		var prioritiesIterator = priorities.makeAsyncIterator()
+		#expect(await prioritiesIterator.next() == .low)
+		#expect(await prioritiesIterator.next() == .low)
+	}
+
+	@Test
+	func task_isEscalatedWhenAwaitedFromHigherPriorityTask() async {
+		let taskStarted = Semaphore()
+		let taskAllowedToReturn = Semaphore()
+		let task = Task(priority: .low, on: systemUnderTest) { _ in
+			await taskStarted.signal()
+			await taskAllowedToReturn.wait()
+			return Task.currentPriority
+		}
+		await taskStarted.wait()
+		let priority = await value(of: task, awaitedFromTaskWithPriority: .high) {
+			await taskAllowedToReturn.signal()
+		}
+		#expect(priority >= .high)
+	}
+
+	@Test
+	func mainTask_isEscalatedWhenAwaitedFromHigherPriorityTask() async {
+		// Use a queue of our own rather than `MainActor.queue`: a higher-priority task that a test running in parallel
+		// enqueues on the shared queue may escalate this task, which would hide whether awaiting this task escalates it.
+		let mainActorQueue = ActorQueue<MainActor>()
+		mainActorQueue.adoptExecutionContext(of: MainActor.shared)
+		let taskStarted = Semaphore()
+		let taskAllowedToReturn = Semaphore()
+		let task = Task(priority: .low, on: mainActorQueue) {
+			await taskStarted.signal()
+			await taskAllowedToReturn.wait()
+			return Task.currentPriority
+		}
+		await taskStarted.wait()
+		let priority = await value(of: task, awaitedFromTaskWithPriority: .high) {
+			await taskAllowedToReturn.signal()
+		}
+		#expect(priority >= .high)
+	}
+
 	// MARK: Private
 
 	private let systemUnderTest: ActorQueue<Counter>
@@ -442,4 +639,20 @@ struct ActorQueueTests {
 
 	@Sendable
 	private func doWork() throws {}
+}
+
+// MARK: - ManuallyExecutedActor
+
+/// An actor whose jobs run only when a test calls `executor.runUntilIdle()`.
+private actor ManuallyExecutedActor {
+	init() {
+		queue.adoptExecutionContext(of: self)
+	}
+
+	nonisolated let queue = ActorQueue<ManuallyExecutedActor>()
+	nonisolated let executor = ManualSerialExecutor()
+
+	nonisolated var unownedExecutor: UnownedSerialExecutor {
+		executor.asUnownedSerialExecutor()
+	}
 }
