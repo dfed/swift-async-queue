@@ -147,9 +147,6 @@ struct CancellableQueueTests {
 		// Wait for the task to end, so that its operation has run.
 		try await task.value
 
-		// `cancelTasks()` returns only once the queue has processed every earlier registration, including the task's.
-		// The task has ended, so this call cancels nothing, and the task is cancelled only if registering it cancelled it.
-		systemUnderTest.cancelTasks()
 		#expect(!task.isCancelled)
 	}
 
@@ -269,9 +266,6 @@ struct CancellableQueueTests {
 		// Wait for the task to end, so that its operation has run.
 		try await task.value
 
-		// `cancelTasks()` returns only once the queue has processed every earlier registration, including the task's.
-		// The task has ended, so this call cancels nothing, and the task is cancelled only if registering it cancelled it.
-		systemUnderTest.cancelTasks()
 		#expect(!task.isCancelled)
 	}
 
@@ -381,9 +375,6 @@ struct CancellableQueueTests {
 		// Wait for the task to end, so that its operation has run.
 		try await task.value
 
-		// `cancelTasks()` returns only once the queue has processed every earlier registration, including the task's.
-		// The task has ended, so this call cancels nothing, and the task is cancelled only if registering it cancelled it.
-		systemUnderTest.cancelTasks()
 		#expect(!task.isCancelled)
 	}
 
@@ -506,8 +497,7 @@ struct CancellableQueueTests {
 			try doWork()
 		}
 
-		// The task submits its cancellation's registration before `Task(on:)` returns, `cancelTasks()` processes every
-		// earlier submission before it cancels, and the task cannot end until it is allowed to.
+		// The task registers its cancellation before `Task(on:)` returns, and cannot end until it is allowed to.
 		await taskStarted.wait()
 		systemUnderTest.cancelTasks()
 		await taskAllowedToEnd.signal()
@@ -527,8 +517,7 @@ struct CancellableQueueTests {
 			try doWork()
 		}
 
-		// The task submits its cancellation's registration before `Task(on:)` returns, `cancelTasks()` processes every
-		// earlier submission before it cancels, and the task cannot end until it is allowed to.
+		// The task registers its cancellation before `Task(on:)` returns, and cannot end until it is allowed to.
 		await taskStarted.wait()
 		systemUnderTest.cancelTasks()
 		await taskAllowedToEnd.signal()
@@ -551,8 +540,7 @@ struct CancellableQueueTests {
 			try doWork()
 		}
 
-		// The task submits its cancellation's registration before `Task(on:)` returns, `cancelTasks()` processes every
-		// earlier submission before it cancels, and the task cannot end until it is allowed to.
+		// The task registers its cancellation before `Task(on:)` returns, and cannot end until it is allowed to.
 		await taskStarted.wait()
 		systemUnderTest.cancelTasks()
 		await taskAllowedToEnd.signal()
@@ -572,8 +560,7 @@ struct CancellableQueueTests {
 			try doWork()
 		}
 
-		// The task submits its cancellation's registration before `Task(on:)` returns, `cancelTasks()` processes every
-		// earlier submission before it cancels, and the task cannot end until it is allowed to.
+		// The task registers its cancellation before `Task(on:)` returns, and cannot end until it is allowed to.
 		await taskStarted.wait()
 		systemUnderTest.cancelTasks()
 		await taskAllowedToEnd.signal()

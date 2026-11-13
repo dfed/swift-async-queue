@@ -25,9 +25,7 @@
 #else
 	import Foundation
 #endif
-#if canImport(Dispatch)
-	import Dispatch
-#endif
+import Synchronization
 
 /// A queue wrapper that enables cancelling all currently executing and pending tasks.
 ///
@@ -66,15 +64,15 @@ public final class CancellableQueue<UnderlyingQueue: Sendable>: Sendable {
 	/// Reserving before the task starts ensures the task's removal of the identifier can never be processed before the reservation.
 	func reserveTaskIdentifier() -> UUID {
 		let identifier = UUID()
-		taskIdentifierToCancelMap.writeAsync {
-			$0.updateValue(nil, forKey: identifier)
+		taskIdentifierToCancelMap.withLock {
+			_ = $0.updateValue(nil, forKey: identifier)
 		}
 		return identifier
 	}
 
 	/// Registers the `cancel` closure for a task whose identifier was previously reserved.
 	func registerCancellation(forTaskWithIdentifier identifier: UUID, _ cancel: @escaping @Sendable () -> Void) {
-		taskIdentifierToCancelMap.writeAsync {
+		taskIdentifierToCancelMap.withLock {
 			// Skip registration if the identifier was already removed because the task already finished.
 			if $0.keys.contains(identifier) {
 				$0[identifier] = cancel
@@ -84,7 +82,7 @@ public final class CancellableQueue<UnderlyingQueue: Sendable>: Sendable {
 
 	/// Removes the identifier of a task that has finished executing.
 	func taskDidFinish(withIdentifier identifier: UUID) {
-		taskIdentifierToCancelMap.writeAsync {
+		taskIdentifierToCancelMap.withLock {
 			$0[identifier] = nil
 		}
 	}
@@ -93,7 +91,8 @@ public final class CancellableQueue<UnderlyingQueue: Sendable>: Sendable {
 
 	fileprivate let underlyingQueue: UnderlyingQueue
 
-	fileprivate let taskIdentifierToCancelMap = Lock<[UUID: (@Sendable () -> Void)?]>(value: [:])
+	/// Never cancel a task while holding this lock: cancellation handlers run synchronously and may call back into this queue.
+	fileprivate let taskIdentifierToCancelMap = Mutex<[UUID: (@Sendable () -> Void)?]>([:])
 }
 
 extension Task {
@@ -398,36 +397,4 @@ extension Task {
 		})
 		fifoQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
 	}
-}
-
-// MARK: - Lock
-
-private final class Lock<State>: @unchecked Sendable {
-	// MARK: Initialization
-
-	init(value: State) {
-		unsafeValue = value
-	}
-
-	// MARK: Fileprivate
-
-	/// Executes `body` while holding the lock.
-	/// - Warning: `body` must not cancel a task, resume a continuation, or otherwise call out to code that may re-enter this lock.
-	fileprivate func withLock<R: Sendable>(_ body: @Sendable (inout State) throws -> R) rethrows -> R {
-		try lockQueue.sync {
-			try body(&unsafeValue)
-		}
-	}
-
-	fileprivate func writeAsync(_ body: @Sendable @escaping (inout State) -> Void) {
-		lockQueue.async {
-			body(&self.unsafeValue)
-		}
-	}
-
-	// MARK: Private
-
-	private var unsafeValue: State
-
-	private let lockQueue = DispatchQueue(label: "ReadWriteLock.Queue", target: DispatchQueue.global())
 }
