@@ -700,6 +700,20 @@ struct CancellableQueueTests {
 	}
 
 	@Test
+	func task_fifoQueue_withPriority_executesAtThatPriority() async {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let executionPriorities = await [
+			priorityOfTask(enqueuedFromTaskWithPriority: .high) { report in
+				Task(priority: .low, on: systemUnderTest) { report(Task.currentPriority) }
+			},
+			priorityOfTask(enqueuedFromTaskWithPriority: .high) { report in
+				Task(priority: .low, on: systemUnderTest) { try doWork(); report(Task.currentPriority) }
+			},
+		]
+		#expect(executionPriorities == [.low, .low])
+	}
+
+	@Test
 	func task_seesCallersTaskLocalValues() async throws {
 		let fifoQueue = CancellableQueue(underlyingQueue: FIFOQueue())
 		let actorQueue = ActorQueue<Counter>()

@@ -20,9 +20,12 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-/// A queue that executes asynchronous tasks enqueued from a nonisolated context in FIFO order.
-/// Tasks are guaranteed to begin _and end_ executing in the order in which they are enqueued.
-/// Asynchronous tasks sent to this queue work as they would in a `DispatchQueue` type. Attempting to `enqueueAndWait` this queue from a task executing on this queue will result in a deadlock.
+/// A queue that runs one task at a time, in the order you enqueue them: first in, first out.
+/// You can enqueue tasks from synchronous or `nonisolated` code.
+/// Each task waits until every task enqueued before it has finished, so tasks start and finish in the order you enqueue them.
+/// A task that is suspended at an `await` hasn't finished.
+/// Inside a task on this queue, don't await another task that you enqueue on the same queue:
+/// each task waits for the other, so both wait forever.
 public final class FIFOQueue: Sendable {
 	// MARK: Initialization
 
@@ -75,29 +78,30 @@ public final class FIFOQueue: Sendable {
 
 extension Task {
 	/// Runs the given nonthrowing operation asynchronously
-	/// as part of a new top-level task that inherits the current isolated context.
-	/// The operation will not execute until all prior tasks – including
-	/// suspended tasks – have completed.
+	/// as part of a new unstructured task that runs with the same actor isolation as the code that enqueues it.
+	/// The operation doesn't run until every task enqueued before it has finished.
+	/// A task that is suspended at an `await` hasn't finished.
 	///
-	/// Use this function when creating asynchronous work
-	/// that operates on behalf of the synchronous function that calls it.
-	/// Like `Task.detached(priority:operation:)`,
-	/// this function creates a separate, top-level task.
-	/// Unlike `Task.detached(priority:operation:)`,
-	/// the task created by `Task.init(priority:operation:)`
-	/// inherits the priority and actor context of the caller,
-	/// so the operation is treated more like an asynchronous extension
-	/// to the synchronous operation.
+	/// Like a task created with `Task.init(name:priority:operation:)`, the task inherits the task-local values
+	/// and, unless you pass a `priority`, the priority of the code that enqueues it.
+	/// When a higher-priority task awaits the task's value, Swift escalates the task's priority.
+	///
+	/// Cancelling the task doesn't remove it from the queue: the operation still runs,
+	/// after every task enqueued before it has finished.
+	/// Check `Task.isCancelled` or call `Task.checkCancellation()` within the operation to stop early.
 	///
 	/// You need to keep a reference to the task
 	/// if you want to cancel it by calling the `Task.cancel()` method.
-	/// Discarding your reference to a detached task
+	/// Discarding your reference to a task
 	/// doesn't implicitly cancel that task,
 	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
 	///   - name: Human readable name of the task.
 	///   - priority: The priority of the task.
+	///     Pass `nil` to inherit the priority of the code that enqueues the task,
+	///     as a task created with `Task.init(name:priority:operation:)` does.
+	///     If the queue was created with a higher priority, the task runs at the queue's priority instead.
 	///   - fifoQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
@@ -116,29 +120,30 @@ extension Task {
 	}
 
 	/// Runs the given throwing operation asynchronously
-	/// as part of a new top-level task that inherits the current isolated context.
-	/// The operation will not execute until all prior tasks – including
-	/// suspended tasks – have completed.
+	/// as part of a new unstructured task that runs with the same actor isolation as the code that enqueues it.
+	/// The operation doesn't run until every task enqueued before it has finished.
+	/// A task that is suspended at an `await` hasn't finished.
 	///
-	/// Use this function when creating asynchronous work
-	/// that operates on behalf of the synchronous function that calls it.
-	/// Like `Task.detached(priority:operation:)`,
-	/// this function creates a separate, top-level task.
-	/// Unlike `Task.detached(priority:operation:)`,
-	/// the task created by `Task.init(priority:operation:)`
-	/// inherits the priority and actor context of the caller,
-	/// so the operation is treated more like an asynchronous extension
-	/// to the synchronous operation.
+	/// Like a task created with `Task.init(name:priority:operation:)`, the task inherits the task-local values
+	/// and, unless you pass a `priority`, the priority of the code that enqueues it.
+	/// When a higher-priority task awaits the task's value, Swift escalates the task's priority.
+	///
+	/// Cancelling the task doesn't remove it from the queue: the operation still runs,
+	/// after every task enqueued before it has finished.
+	/// Check `Task.isCancelled` or call `Task.checkCancellation()` within the operation to stop early.
 	///
 	/// You need to keep a reference to the task
 	/// if you want to cancel it by calling the `Task.cancel()` method.
-	/// Discarding your reference to a detached task
+	/// Discarding your reference to a task
 	/// doesn't implicitly cancel that task,
 	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
 	///   - name: Human readable name of the task.
 	///   - priority: The priority of the task.
+	///     Pass `nil` to inherit the priority of the code that enqueues the task,
+	///     as a task created with `Task.init(name:priority:operation:)` does.
+	///     If the queue was created with a higher priority, the task runs at the queue's priority instead.
 	///   - fifoQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
@@ -157,30 +162,30 @@ extension Task {
 	}
 
 	/// Runs the given nonthrowing operation asynchronously
-	/// as part of a new top-level task isolated to the given actor.
-	/// The operation will not execute until all prior tasks – including
-	/// suspended tasks – have completed.
+	/// as part of a new unstructured task isolated to the given actor.
+	/// The operation doesn't run until every task enqueued before it has finished.
+	/// A task that is suspended at an `await` hasn't finished.
 	///
-	/// Use this function when creating asynchronous work
-	/// that operates on behalf of the synchronous function that calls it.
-	/// Like `Task.detached(priority:operation:)`,
-	/// this function creates a separate, top-level task.
-	/// Unlike `Task.detached(priority:operation:)`,
-	/// the task created by `Task.init(priority:operation:)`
-	/// inherits the priority and actor context of the caller,
-	/// so the operation is treated more like an asynchronous extension
-	/// to the synchronous operation.
+	/// Like a task created with `Task.init(name:priority:operation:)`, the task inherits the task-local values
+	/// and, unless you pass a `priority`, the priority of the code that enqueues it.
+	/// When a higher-priority task awaits the task's value, Swift escalates the task's priority.
+	///
+	/// Cancelling the task doesn't remove it from the queue: the operation still runs,
+	/// after every task enqueued before it has finished.
+	/// Check `Task.isCancelled` or call `Task.checkCancellation()` within the operation to stop early.
 	///
 	/// You need to keep a reference to the task
 	/// if you want to cancel it by calling the `Task.cancel()` method.
-	/// Discarding your reference to a detached task
+	/// Discarding your reference to a task
 	/// doesn't implicitly cancel that task,
 	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
 	///   - name: Human readable name of the task.
 	///   - priority: The priority of the task.
-	///     Pass `nil` to use the priority from `Task.currentPriority`.
+	///     Pass `nil` to inherit the priority of the code that enqueues the task,
+	///     as a task created with `Task.init(name:priority:operation:)` does.
+	///     If the queue was created with a higher priority, the task runs at the queue's priority instead.
 	///   - fifoQueue: The queue on which to enqueue the task.
 	///   - isolatedActor: The actor to which the operation is isolated.
 	///   - operation: The operation to perform.
@@ -201,30 +206,30 @@ extension Task {
 	}
 
 	/// Runs the given throwing operation asynchronously
-	/// as part of a new top-level task isolated to the given actor.
-	/// The operation will not execute until all prior tasks – including
-	/// suspended tasks – have completed.
+	/// as part of a new unstructured task isolated to the given actor.
+	/// The operation doesn't run until every task enqueued before it has finished.
+	/// A task that is suspended at an `await` hasn't finished.
 	///
-	/// Use this function when creating asynchronous work
-	/// that operates on behalf of the synchronous function that calls it.
-	/// Like `Task.detached(priority:operation:)`,
-	/// this function creates a separate, top-level task.
-	/// Unlike `Task.detached(priority:operation:)`,
-	/// the task created by `Task.init(priority:operation:)`
-	/// inherits the priority and actor context of the caller,
-	/// so the operation is treated more like an asynchronous extension
-	/// to the synchronous operation.
+	/// Like a task created with `Task.init(name:priority:operation:)`, the task inherits the task-local values
+	/// and, unless you pass a `priority`, the priority of the code that enqueues it.
+	/// When a higher-priority task awaits the task's value, Swift escalates the task's priority.
+	///
+	/// Cancelling the task doesn't remove it from the queue: the operation still runs,
+	/// after every task enqueued before it has finished.
+	/// Check `Task.isCancelled` or call `Task.checkCancellation()` within the operation to stop early.
 	///
 	/// You need to keep a reference to the task
 	/// if you want to cancel it by calling the `Task.cancel()` method.
-	/// Discarding your reference to a detached task
+	/// Discarding your reference to a task
 	/// doesn't implicitly cancel that task,
 	/// it only makes it impossible for you to explicitly cancel the task.
 	///
 	/// - Parameters:
 	///   - name: Human readable name of the task.
 	///   - priority: The priority of the task.
-	///     Pass `nil` to use the priority from `Task.currentPriority`.
+	///     Pass `nil` to inherit the priority of the code that enqueues the task,
+	///     as a task created with `Task.init(name:priority:operation:)` does.
+	///     If the queue was created with a higher priority, the task runs at the queue's priority instead.
 	///   - fifoQueue: The queue on which to enqueue the task.
 	///   - isolatedActor: The actor to which the operation is isolated.
 	///   - operation: The operation to perform.
