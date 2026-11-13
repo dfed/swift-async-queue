@@ -55,24 +55,7 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
 	// MARK: Initialization
 
 	/// Instantiates an actor queue.
-	/// - Parameter name: Human readable name of the queue.
-	public init(name: String? = nil) {
-		let (taskStream, taskStreamContinuation) = AsyncStream<ActorTask>.makeStream()
-		self.taskStreamContinuation = taskStreamContinuation
-
-		Task(name: name) {
-			// In an ideal world, we would isolate this `for await` loop to the `ActorType`.
-			// However, there's no good way to do that without retaining the actor and creating a cycle.
-			for await actorTask in taskStream {
-				// Await switching to the ActorType context.
-				await actorTask.task(actorTask.executionContext)
-			}
-		}
-	}
-
-	deinit {
-		taskStreamContinuation.finish()
-	}
+	public init() {}
 
 	// MARK: Public
 
@@ -87,9 +70,12 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
 		weakExecutionContext = actor
 	}
 
-	// MARK: Fileprivate
+	// MARK: Internal
 
-	fileprivate let taskStreamContinuation: AsyncStream<ActorTask>.Continuation
+	/// Hands out turns to begin executing on the adopted actor, in the order in which tasks are enqueued.
+	let turns = Turns()
+
+	// MARK: Fileprivate
 
 	/// The actor on whose isolated context our tasks run, force-unwrapped.
 	/// Utilize this accessor to retrieve the weak execution context in order to avoid repeating the below comment.
@@ -98,19 +84,6 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
 		// after the execution context has deallocated. An ActorQueue's execution context should be set in the adopted
 		// actor's `init` method, and the ActorQueue should not exceed the lifecycle of the adopted actor.
 		weakExecutionContext!
-	}
-
-	fileprivate struct ActorTask: Sendable {
-		init(
-			executionContext: ActorType,
-			task: @escaping @Sendable (isolated ActorType) async -> Void,
-		) {
-			self.executionContext = executionContext
-			self.task = task
-		}
-
-		let executionContext: ActorType
-		let task: @Sendable (isolated ActorType) async -> Void
 	}
 
 	// MARK: Private
@@ -158,26 +131,11 @@ extension Task {
 		on actorQueue: ActorQueue<ActorType>,
 		operation: @Sendable @escaping (isolated ActorType) async -> Success,
 	) where Failure == Never {
-		let delivery = Delivery<Success, Failure>()
-		let semaphore = Semaphore()
-		let task = ActorQueue<ActorType>.ActorTask(
-			executionContext: actorQueue.executionContext,
-			task: { executionContext in
-				await semaphore.wait()
-				delivery.execute({ @Sendable executionContext in
-					await delivery.sendValue(operation(executionContext))
-				}, in: executionContext, name: name, priority: priority)
-			},
-		)
-		actorQueue.taskStreamContinuation.yield(task)
+		let executionContext = actorQueue.executionContext
+		let turn = actorQueue.turns.reserve()
 		self.init(name: name, priority: priority) {
-			await withTaskCancellationHandler(
-				operation: {
-					await semaphore.signal()
-					return await delivery.getValue()
-				},
-				onCancel: delivery.cancel,
-			)
+			await turn.begin()
+			return await execute(operation, on: executionContext, endingTurn: turn)
 		}
 	}
 
@@ -215,30 +173,11 @@ extension Task {
 		on actorQueue: ActorQueue<ActorType>,
 		operation: @escaping @Sendable (isolated ActorType) async throws -> Success,
 	) where Failure == any Error {
-		let delivery = Delivery<Success, Failure>()
-		let semaphore = Semaphore()
-		let task = ActorQueue<ActorType>.ActorTask(
-			executionContext: actorQueue.executionContext,
-			task: { executionContext in
-				await semaphore.wait()
-				delivery.execute({ @Sendable executionContext in
-					do {
-						try await delivery.sendValue(operation(executionContext))
-					} catch {
-						await delivery.sendFailure(error)
-					}
-				}, in: executionContext, name: name, priority: priority)
-			},
-		)
-		actorQueue.taskStreamContinuation.yield(task)
+		let executionContext = actorQueue.executionContext
+		let turn = actorQueue.turns.reserve()
 		self.init(name: name, priority: priority) {
-			try await withTaskCancellationHandler(
-				operation: {
-					await semaphore.signal()
-					return try await delivery.getValue()
-				},
-				onCancel: delivery.cancel,
-			)
+			await turn.begin()
+			return try await execute(operation, on: executionContext, endingTurn: turn)
 		}
 	}
 
@@ -276,26 +215,10 @@ extension Task {
 		on actorQueue: ActorQueue<MainActor>,
 		operation: @MainActor @escaping () async -> Success,
 	) where Failure == Never {
-		let delivery = Delivery<Success, Failure>()
-		let semaphore = Semaphore()
-		let task = ActorQueue<MainActor>.ActorTask(
-			executionContext: actorQueue.executionContext,
-			task: { executionContext in
-				await semaphore.wait()
-				delivery.execute({ @Sendable executionContext in
-					await delivery.sendValue(operation())
-				}, in: executionContext, name: name, priority: priority)
-			},
-		)
-		actorQueue.taskStreamContinuation.yield(task)
+		let turn = actorQueue.turns.reserve()
 		self.init(name: name, priority: priority) {
-			await withTaskCancellationHandler(
-				operation: {
-					await semaphore.signal()
-					return await delivery.getValue()
-				},
-				onCancel: delivery.cancel,
-			)
+			await turn.begin()
+			return await executeOnMainActor(operation, endingTurn: turn)
 		}
 	}
 
@@ -333,32 +256,40 @@ extension Task {
 		on actorQueue: ActorQueue<MainActor>,
 		operation: @escaping @MainActor () async throws -> Success,
 	) where Failure == any Error {
-		let delivery = Delivery<Success, Failure>()
-		let semaphore = Semaphore()
-		let task = ActorQueue<MainActor>.ActorTask(
-			executionContext: actorQueue.executionContext,
-			task: { executionContext in
-				await semaphore.wait()
-				delivery.execute({ @Sendable executionContext in
-					do {
-						try await delivery.sendValue(operation())
-					} catch {
-						await delivery.sendFailure(error)
-					}
-				}, in: executionContext, name: name, priority: priority)
-			},
-		)
-		actorQueue.taskStreamContinuation.yield(task)
+		let turn = actorQueue.turns.reserve()
 		self.init(name: name, priority: priority) {
-			try await withTaskCancellationHandler(
-				operation: {
-					await semaphore.signal()
-					return try await delivery.getValue()
-				},
-				onCancel: delivery.cancel,
-			)
+			await turn.begin()
+			return try await executeOnMainActor(operation, endingTurn: turn)
 		}
 	}
+}
+
+// MARK: - Execution
+
+/// Executes `operation` on `actor`, ending `turn` as soon as the task is isolated to `actor`.
+///
+/// Ending the turn lets the next enqueued task hop to `actor`. That task cannot execute on `actor`
+/// until `operation` suspends or returns, so tasks begin executing in the order in which they were enqueued.
+private func execute<ActorType: Actor, Success>(
+	_ operation: (isolated ActorType) async throws -> Success,
+	on actor: isolated ActorType,
+	endingTurn turn: Turn,
+) async rethrows -> Success {
+	turn.end()
+	return try await operation(actor)
+}
+
+/// Executes `operation` on the main actor, ending `turn` as soon as the task is isolated to the main actor.
+///
+/// Ending the turn lets the next enqueued task hop to the main actor. That task cannot execute on the main actor
+/// until `operation` suspends or returns, so tasks begin executing in the order in which they were enqueued.
+@MainActor
+private func executeOnMainActor<Success>(
+	_ operation: @MainActor () async throws -> Success,
+	endingTurn turn: Turn,
+) async rethrows -> Success {
+	turn.end()
+	return try await operation()
 }
 
 extension MainActor {
