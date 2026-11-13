@@ -132,7 +132,7 @@ struct CancellableQueueTests {
 	}
 
 	@Test
-	func cancelTasks_fifoQueue_doesNotCancelFutureTasks() {
+	func cancelTasks_fifoQueue_doesNotCancelFutureTasks() async throws {
 		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
 		let counter = Counter()
 
@@ -144,6 +144,12 @@ struct CancellableQueueTests {
 			try doWork()
 		}
 
+		// Wait for the task to end, so that its operation has run.
+		try await task.value
+
+		// `cancelTasks()` returns only once the queue has processed every earlier registration, including the task's.
+		// The task has ended, so this call cancels nothing, and the task is cancelled only if registering it cancelled it.
+		systemUnderTest.cancelTasks()
 		#expect(!task.isCancelled)
 	}
 
@@ -197,9 +203,11 @@ struct CancellableQueueTests {
 
 	@Test
 	func cancelTasks_actorQueue_cancelsCurrentlyExecutingAndPendingTasks() async {
-		let actorQueue = ActorQueue<Counter>()
-		let counter = Counter()
-		actorQueue.adoptExecutionContext(of: counter)
+		// Use an actor that does not execute on the cooperative thread pool: the spinning task below would
+		// otherwise occupy a cooperative thread that this test needs to cancel it, which can hang on a single CPU.
+		let actorQueue = ActorQueue<DispatchQueueActor>()
+		let dispatchQueueActor = DispatchQueueActor()
+		actorQueue.adoptExecutionContext(of: dispatchQueueActor)
 		let systemUnderTest = CancellableQueue(underlyingQueue: actorQueue)
 		let taskStarted = Semaphore()
 		let taskAllowedToEnd = Semaphore()
@@ -212,9 +220,7 @@ struct CancellableQueueTests {
 
 		// Create a task that spins until cancelled, ensuring task3 remains pending.
 		let task2 = Task(on: systemUnderTest) { _ in
-			while true {
-				try Task.checkCancellation()
-			}
+			while !Task.isCancelled {}
 		}
 
 		// Create a pending task.
@@ -228,16 +234,25 @@ struct CancellableQueueTests {
 		// Cancel all tasks.
 		systemUnderTest.cancelTasks()
 
-		// Allow tasks to end now that we've cancelled them.
+		// Allow both waiting tasks to end now that we've cancelled them.
+		await taskAllowedToEnd.signal()
 		await taskAllowedToEnd.signal()
 
 		#expect(task1.isCancelled)
 		#expect(task2.isCancelled)
 		#expect(task3.isCancelled)
+
+		// Stop the spinning task even if cancelling tasks did not, so that a regression fails this test instead of hanging it.
+		task2.cancel()
+
+		// Wait for every task to end, so that every operation has run.
+		await task1.value
+		await task2.value
+		_ = await task3.value
 	}
 
 	@Test
-	func cancelTasks_actorQueue_doesNotCancelFutureTasks() {
+	func cancelTasks_actorQueue_doesNotCancelFutureTasks() async throws {
 		let actorQueue = ActorQueue<Counter>()
 		let counter = Counter()
 		actorQueue.adoptExecutionContext(of: counter)
@@ -251,6 +266,12 @@ struct CancellableQueueTests {
 			try doWork()
 		}
 
+		// Wait for the task to end, so that its operation has run.
+		try await task.value
+
+		// `cancelTasks()` returns only once the queue has processed every earlier registration, including the task's.
+		// The task has ended, so this call cancels nothing, and the task is cancelled only if registering it cancelled it.
+		systemUnderTest.cancelTasks()
 		#expect(!task.isCancelled)
 	}
 
@@ -298,7 +319,11 @@ struct CancellableQueueTests {
 
 	@Test
 	func cancelTasks_mainActorQueue_cancelsCurrentlyExecutingAndPendingTasks() async {
-		let systemUnderTest = CancellableQueue(underlyingQueue: MainActor.queue)
+		// Use a queue of our own rather than `MainActor.queue`, which tests running in parallel share,
+		// so that their tasks are not queued behind this test's tasks.
+		let mainActorQueue = ActorQueue<MainActor>()
+		mainActorQueue.adoptExecutionContext(of: MainActor.shared)
+		let systemUnderTest = CancellableQueue(underlyingQueue: mainActorQueue)
 		let taskStarted = Semaphore()
 		let taskAllowedToEnd = Semaphore()
 
@@ -310,9 +335,7 @@ struct CancellableQueueTests {
 
 		// Create a task that spins until cancelled, ensuring task3 remains pending.
 		let task2 = Task(on: systemUnderTest) {
-			while true {
-				try Task.checkCancellation()
-			}
+			while !Task.isCancelled {}
 		}
 
 		// Create a pending task.
@@ -326,16 +349,25 @@ struct CancellableQueueTests {
 		// Cancel all tasks.
 		systemUnderTest.cancelTasks()
 
-		// Allow tasks to end now that we've cancelled them.
+		// Allow both waiting tasks to end now that we've cancelled them.
+		await taskAllowedToEnd.signal()
 		await taskAllowedToEnd.signal()
 
 		#expect(task1.isCancelled)
 		#expect(task2.isCancelled)
 		#expect(task3.isCancelled)
+
+		// Stop the spinning task even if cancelling tasks did not, so that a regression fails this test instead of hanging it.
+		task2.cancel()
+
+		// Wait for every task to end, so that every operation has run.
+		await task1.value
+		await task2.value
+		_ = await task3.value
 	}
 
 	@Test
-	func cancelTasks_mainActorQueue_doesNotCancelFutureTasks() {
+	func cancelTasks_mainActorQueue_doesNotCancelFutureTasks() async throws {
 		let systemUnderTest = CancellableQueue(underlyingQueue: MainActor.queue)
 
 		// Cancel tasks before creating any.
@@ -346,10 +378,264 @@ struct CancellableQueueTests {
 			try doWork()
 		}
 
+		// Wait for the task to end, so that its operation has run.
+		try await task.value
+
+		// `cancelTasks()` returns only once the queue has processed every earlier registration, including the task's.
+		// The task has ended, so this call cancels nothing, and the task is cancelled only if registering it cancelled it.
+		systemUnderTest.cancelTasks()
+		#expect(!task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_fifoQueue_canBeCalledFromCancellationHandler() async {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let taskStarted = Semaphore()
+		let task = Task(on: systemUnderTest) {
+			await withTaskCancellationHandler {
+				await taskStarted.signal()
+				await suspendUntilCancelled()
+			} onCancel: {
+				systemUnderTest.cancelTasks()
+			}
+		}
+		await taskStarted.wait()
+		systemUnderTest.cancelTasks()
+		#expect(task.isCancelled)
+
+		// Stop the task even if cancelling tasks did not, so that a regression fails this test instead of hanging it.
+		task.cancel()
+		await task.value
+	}
+
+	@Test
+	func cancelTasks_actorQueue_canBeCalledFromCancellationHandler() async {
+		let actorQueue = ActorQueue<Counter>()
+		let counter = Counter()
+		actorQueue.adoptExecutionContext(of: counter)
+		let systemUnderTest = CancellableQueue(underlyingQueue: actorQueue)
+		let taskStarted = Semaphore()
+		let task = Task(on: systemUnderTest) { _ in
+			await withTaskCancellationHandler {
+				await taskStarted.signal()
+				await suspendUntilCancelled()
+			} onCancel: {
+				systemUnderTest.cancelTasks()
+			}
+		}
+		await taskStarted.wait()
+		systemUnderTest.cancelTasks()
+		#expect(task.isCancelled)
+
+		// Stop the task even if cancelling tasks did not, so that a regression fails this test instead of hanging it.
+		task.cancel()
+		await task.value
+	}
+
+	@Test
+	func cancelTasks_actorQueue_doesNotCancelCompletedNonthrowingTask() async {
+		let actorQueue = ActorQueue<Counter>()
+		let counter = Counter()
+		actorQueue.adoptExecutionContext(of: counter)
+		let systemUnderTest = CancellableQueue(underlyingQueue: actorQueue)
+		let task = Task(on: systemUnderTest) { _ in }
+
+		// The task removes itself from the queue before it completes, so cancelling tasks afterward must not cancel it.
+		await task.value
+		systemUnderTest.cancelTasks()
+
+		#expect(!task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_mainActorQueue_doesNotCancelCompletedNonthrowingTask() async {
+		let systemUnderTest = CancellableQueue(underlyingQueue: MainActor.queue)
+		let task = Task(on: systemUnderTest) {}
+
+		// The task removes itself from the queue before it completes, so cancelling tasks afterward must not cancel it.
+		await task.value
+		systemUnderTest.cancelTasks()
+
+		#expect(!task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_fifoQueue_doesNotCancelCompletedNonthrowingTask() async {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let task = Task(on: systemUnderTest) {}
+
+		// The task removes itself from the queue before it completes, so cancelling tasks afterward must not cancel it.
+		await task.value
+		systemUnderTest.cancelTasks()
+
+		#expect(!task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_fifoQueue_doesNotCancelCompletedNonthrowingTaskIsolatedToActor() async {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let task = Task(on: systemUnderTest, isolatedTo: Counter()) { _ in }
+
+		// The task removes itself from the queue before it completes, so cancelling tasks afterward must not cancel it.
+		await task.value
+		systemUnderTest.cancelTasks()
+
+		#expect(!task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_fifoQueue_doesNotCancelCompletedThrowingTaskIsolatedToActor() async {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let task = Task(on: systemUnderTest, isolatedTo: Counter()) { _ in try doWork() }
+
+		// The task removes itself from the queue before it completes, so cancelling tasks afterward must not cancel it.
+		_ = await task.result
+		systemUnderTest.cancelTasks()
+
+		#expect(!task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_fifoQueue_cancelsCurrentlyExecutingThrowingTask() async {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let taskStarted = Semaphore()
+		let taskAllowedToEnd = Semaphore()
+		let task = Task(on: systemUnderTest) {
+			await taskStarted.signal()
+			await taskAllowedToEnd.wait()
+			try doWork()
+		}
+
+		// The task submits its cancellation's registration before `Task(on:)` returns, `cancelTasks()` processes every
+		// earlier submission before it cancels, and the task cannot end until it is allowed to.
+		await taskStarted.wait()
+		systemUnderTest.cancelTasks()
+		await taskAllowedToEnd.signal()
+		_ = await task.result
+
+		#expect(task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_fifoQueue_cancelsCurrentlyExecutingThrowingTaskIsolatedToActor() async {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let taskStarted = Semaphore()
+		let taskAllowedToEnd = Semaphore()
+		let task = Task(on: systemUnderTest, isolatedTo: Counter()) { _ in
+			await taskStarted.signal()
+			await taskAllowedToEnd.wait()
+			try doWork()
+		}
+
+		// The task submits its cancellation's registration before `Task(on:)` returns, `cancelTasks()` processes every
+		// earlier submission before it cancels, and the task cannot end until it is allowed to.
+		await taskStarted.wait()
+		systemUnderTest.cancelTasks()
+		await taskAllowedToEnd.signal()
+		_ = await task.result
+
+		#expect(task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_actorQueue_cancelsCurrentlyExecutingThrowingTask() async {
+		let actorQueue = ActorQueue<Counter>()
+		let counter = Counter()
+		actorQueue.adoptExecutionContext(of: counter)
+		let systemUnderTest = CancellableQueue(underlyingQueue: actorQueue)
+		let taskStarted = Semaphore()
+		let taskAllowedToEnd = Semaphore()
+		let task = Task(on: systemUnderTest) { _ in
+			await taskStarted.signal()
+			await taskAllowedToEnd.wait()
+			try doWork()
+		}
+
+		// The task submits its cancellation's registration before `Task(on:)` returns, `cancelTasks()` processes every
+		// earlier submission before it cancels, and the task cannot end until it is allowed to.
+		await taskStarted.wait()
+		systemUnderTest.cancelTasks()
+		await taskAllowedToEnd.signal()
+		_ = await task.result
+
+		#expect(task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_mainActorQueue_cancelsCurrentlyExecutingThrowingTask() async {
+		let systemUnderTest = CancellableQueue(underlyingQueue: MainActor.queue)
+		let taskStarted = Semaphore()
+		let taskAllowedToEnd = Semaphore()
+		let task = Task(on: systemUnderTest) {
+			await taskStarted.signal()
+			await taskAllowedToEnd.wait()
+			try doWork()
+		}
+
+		// The task submits its cancellation's registration before `Task(on:)` returns, `cancelTasks()` processes every
+		// earlier submission before it cancels, and the task cannot end until it is allowed to.
+		await taskStarted.wait()
+		systemUnderTest.cancelTasks()
+		await taskAllowedToEnd.signal()
+		_ = await task.result
+
+		#expect(task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_actorQueue_doesNotCancelTaskThatThrew() async {
+		let actorQueue = ActorQueue<Counter>()
+		let counter = Counter()
+		actorQueue.adoptExecutionContext(of: counter)
+		let systemUnderTest = CancellableQueue(underlyingQueue: actorQueue)
+		let task = Task(on: systemUnderTest) { _ in throw TestError() }
+
+		// The task removes itself from the queue when its operation throws, so cancelling tasks afterward must not cancel it.
+		_ = await task.result
+		systemUnderTest.cancelTasks()
+
+		#expect(!task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_mainActorQueue_doesNotCancelTaskThatThrew() async {
+		let systemUnderTest = CancellableQueue(underlyingQueue: MainActor.queue)
+		let task = Task(on: systemUnderTest) { throw TestError() }
+
+		// The task removes itself from the queue when its operation throws, so cancelling tasks afterward must not cancel it.
+		_ = await task.result
+		systemUnderTest.cancelTasks()
+
+		#expect(!task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_fifoQueue_doesNotCancelTaskThatThrew() async {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let task = Task(on: systemUnderTest) { throw TestError() }
+
+		// The task removes itself from the queue when its operation throws, so cancelling tasks afterward must not cancel it.
+		_ = await task.result
+		systemUnderTest.cancelTasks()
+
+		#expect(!task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_fifoQueue_doesNotCancelTaskIsolatedToActorThatThrew() async {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let task = Task(on: systemUnderTest, isolatedTo: Counter()) { _ in throw TestError() }
+
+		// The task removes itself from the queue when its operation throws, so cancelling tasks afterward must not cancel it.
+		_ = await task.result
+		systemUnderTest.cancelTasks()
+
 		#expect(!task.isCancelled)
 	}
 
 	// MARK: Private
+
+	private struct TestError: Error {}
 
 	@Sendable
 	private func doWork() throws {}
