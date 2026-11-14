@@ -131,9 +131,13 @@ struct ActorQueueTests {
 
 	@Test
 	func mainTask_sendsEventsInOrder() async throws {
+		// Use a queue of our own rather than `MainActor.queue`: higher-priority tasks that tests running in parallel enqueue
+		// on the shared queue escalate the tasks ahead of them, which reorders what those tasks do after they suspend.
+		let mainActorQueue = ActorQueue<MainActor>()
+		mainActorQueue.adoptExecutionContext(of: MainActor.shared)
 		var lastTask: Task<Void, Error>?
 		for iteration in 1...1_000 {
-			lastTask = Task(on: MainActor.queue) {
+			lastTask = Task(on: mainActorQueue) {
 				await counter.incrementAndExpectCount(equals: iteration)
 			}
 		}
@@ -143,9 +147,12 @@ struct ActorQueueTests {
 
 	@Test
 	func mainThrowingTask_sendsEventsInOrder() async throws {
+		// Use a queue of our own rather than `MainActor.queue`. See `mainTask_sendsEventsInOrder`.
+		let mainActorQueue = ActorQueue<MainActor>()
+		mainActorQueue.adoptExecutionContext(of: MainActor.shared)
 		var lastTask: Task<Void, Error>?
 		for iteration in 1...1_000 {
-			lastTask = Task(on: MainActor.queue) {
+			lastTask = Task(on: mainActorQueue) {
 				await counter.incrementAndExpectCount(equals: iteration)
 				try doWork()
 			}
@@ -616,6 +623,121 @@ struct ActorQueueTests {
 			await taskAllowedToReturn.signal()
 		}
 		#expect(priority >= .high)
+	}
+
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
+	func task_waitingForActor_isEscalatedByHigherPriorityTaskWaitingForItsTurn() async {
+		let actor = ManuallyExecutedActor()
+		var enqueuedJobs = actor.executor.enqueuedJobs.makeAsyncIterator()
+		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+		// Never await this task: awaiting it would escalate it without the queue's help.
+		Task(priority: .background, on: actor.queue) { _ in
+			prioritiesContinuation.yield(Task.currentPriority)
+		}
+		// Wait for the task to hop to the actor, whose executor holds the task's job until the test runs it.
+		await enqueuedJobs.next()
+		let executor = ManualTaskExecutor()
+		let nextTurn = actor.queue.turns.reserve()
+		let waitingTask = Task(executorPreference: executor, priority: .high) {
+			await nextTurn.begin()
+			nextTurn.end()
+		}
+		nextTurn.register(waitingTask)
+		// Run the waiting task until it waits for its turn, which escalates the task holding the turn before returning.
+		executor.runUntilIdle()
+		actor.executor.runUntilIdle()
+		var prioritiesIterator = priorities.makeAsyncIterator()
+		let priority = await prioritiesIterator.next()
+		executor.runUntilIdle()
+		await waitingTask.value
+		#expect(priority.map { $0 >= .high } == true)
+	}
+
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
+	func throwingTask_isEscalatedWhenItsTurnBeginsWhileHigherPriorityTaskWaits() async {
+		// Hold the turn before the background task's, so that the background task cannot begin its turn yet.
+		let heldTurn = systemUnderTest.turns.reserve()
+		let taskAllowedToReport = Semaphore()
+		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+		// Never await this task before it reports its priority: awaiting it would escalate it without the queue's help.
+		let task = Task(priority: .background, on: systemUnderTest) { _ in
+			await taskAllowedToReport.wait()
+			try doWork()
+			prioritiesContinuation.yield(Task.currentPriority)
+		}
+		// This task waits for the background task's turn to end, and so escalates the background task once its turn begins.
+		let finishWaiting = runTaskWaitingForNextTurn(of: systemUnderTest.turns, withPriority: .high)
+		await heldTurn.begin()
+		// Ending the held turn escalates the background task on behalf of the waiting task before `end()` returns.
+		heldTurn.end()
+		// The background task may begin its turn before `end()` escalates it, so let it report only once `end()` has returned.
+		await taskAllowedToReport.signal()
+		var prioritiesIterator = priorities.makeAsyncIterator()
+		let priority = await prioritiesIterator.next()
+		await finishWaiting()
+		_ = await task.result
+		#expect(priority.map { $0 >= .high } == true)
+	}
+
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
+	func mainTask_isEscalatedWhenItsTurnBeginsWhileHigherPriorityTaskWaits() async {
+		// Use a queue of our own rather than `MainActor.queue`, which tests running in parallel share.
+		let mainActorQueue = ActorQueue<MainActor>()
+		mainActorQueue.adoptExecutionContext(of: MainActor.shared)
+		// Hold the turn before the background task's, so that the background task cannot begin its turn yet.
+		let heldTurn = mainActorQueue.turns.reserve()
+		let taskAllowedToReport = Semaphore()
+		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+		// Never await this task before it reports its priority: awaiting it would escalate it without the queue's help.
+		let task = Task(priority: .background, on: mainActorQueue) {
+			await taskAllowedToReport.wait()
+			prioritiesContinuation.yield(Task.currentPriority)
+		}
+		// This task waits for the background task's turn to end, and so escalates the background task once its turn begins.
+		let finishWaiting = runTaskWaitingForNextTurn(of: mainActorQueue.turns, withPriority: .high)
+		await heldTurn.begin()
+		// Ending the held turn escalates the background task on behalf of the waiting task before `end()` returns.
+		heldTurn.end()
+		// The background task may begin its turn before `end()` escalates it, so let it report only once `end()` has returned.
+		await taskAllowedToReport.signal()
+		var prioritiesIterator = priorities.makeAsyncIterator()
+		let priority = await prioritiesIterator.next()
+		await finishWaiting()
+		_ = await task.result
+		#expect(priority.map { $0 >= .high } == true)
+	}
+
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
+	func mainThrowingTask_isEscalatedWhenItsTurnBeginsWhileHigherPriorityTaskWaits() async {
+		// Use a queue of our own rather than `MainActor.queue`, which tests running in parallel share.
+		let mainActorQueue = ActorQueue<MainActor>()
+		mainActorQueue.adoptExecutionContext(of: MainActor.shared)
+		// Hold the turn before the background task's, so that the background task cannot begin its turn yet.
+		let heldTurn = mainActorQueue.turns.reserve()
+		let taskAllowedToReport = Semaphore()
+		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+		// Never await this task before it reports its priority: awaiting it would escalate it without the queue's help.
+		let task = Task(priority: .background, on: mainActorQueue) {
+			await taskAllowedToReport.wait()
+			try doWork()
+			prioritiesContinuation.yield(Task.currentPriority)
+		}
+		// This task waits for the background task's turn to end, and so escalates the background task once its turn begins.
+		let finishWaiting = runTaskWaitingForNextTurn(of: mainActorQueue.turns, withPriority: .high)
+		await heldTurn.begin()
+		// Ending the held turn escalates the background task on behalf of the waiting task before `end()` returns.
+		heldTurn.end()
+		// The background task may begin its turn before `end()` escalates it, so let it report only once `end()` has returned.
+		await taskAllowedToReport.signal()
+		var prioritiesIterator = priorities.makeAsyncIterator()
+		let priority = await prioritiesIterator.next()
+		await finishWaiting()
+		_ = await task.result
+		#expect(priority.map { $0 >= .high } == true)
 	}
 
 	// MARK: Private
