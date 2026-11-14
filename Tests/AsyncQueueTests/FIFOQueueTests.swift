@@ -785,6 +785,119 @@ struct FIFOQueueTests {
 		#expect(priority >= .high)
 	}
 
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
+	func task_isEscalatedByHigherPriorityTaskWaitingForItsTurn() async {
+		let taskAllowedToReport = Semaphore()
+		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+		// Never await this task before it reports its priority: awaiting it would escalate it without the queue's help.
+		let task = Task(priority: .background, on: systemUnderTest) {
+			await taskAllowedToReport.wait()
+			prioritiesContinuation.yield(Task.currentPriority)
+		}
+		// This task waits for the task's turn to end, and so escalates the task before this call returns.
+		let finishWaiting = runTaskWaitingForNextTurn(of: systemUnderTest.turns, withPriority: .high)
+		await taskAllowedToReport.signal()
+		var prioritiesIterator = priorities.makeAsyncIterator()
+		let priority = await prioritiesIterator.next()
+		await finishWaiting()
+		_ = await task.result
+		#expect(priority.map { $0 >= .high } == true)
+	}
+
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
+	func taskIsolatedTo_isEscalatedByHigherPriorityTaskWaitingForItsTurn() async {
+		let taskAllowedToReport = Semaphore()
+		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+		// Never await this task before it reports its priority: awaiting it would escalate it without the queue's help.
+		let task = Task(priority: .background, on: systemUnderTest, isolatedTo: Counter()) { _ in
+			await taskAllowedToReport.wait()
+			prioritiesContinuation.yield(Task.currentPriority)
+		}
+		// This task waits for the task's turn to end, and so escalates the task before this call returns.
+		let finishWaiting = runTaskWaitingForNextTurn(of: systemUnderTest.turns, withPriority: .high)
+		await taskAllowedToReport.signal()
+		var prioritiesIterator = priorities.makeAsyncIterator()
+		let priority = await prioritiesIterator.next()
+		await finishWaiting()
+		_ = await task.result
+		#expect(priority.map { $0 >= .high } == true)
+	}
+
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
+	func throwingTask_isEscalatedByHigherPriorityTaskWaitingForItsTurn() async {
+		let taskAllowedToReport = Semaphore()
+		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+		// Never await this task before it reports its priority: awaiting it would escalate it without the queue's help.
+		let task = Task(priority: .background, on: systemUnderTest) {
+			await taskAllowedToReport.wait()
+			try doWork()
+			prioritiesContinuation.yield(Task.currentPriority)
+		}
+		// This task waits for the task's turn to end, and so escalates the task before this call returns.
+		let finishWaiting = runTaskWaitingForNextTurn(of: systemUnderTest.turns, withPriority: .high)
+		await taskAllowedToReport.signal()
+		var prioritiesIterator = priorities.makeAsyncIterator()
+		let priority = await prioritiesIterator.next()
+		await finishWaiting()
+		_ = await task.result
+		#expect(priority.map { $0 >= .high } == true)
+	}
+
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
+	func throwingTaskIsolatedTo_isEscalatedByHigherPriorityTaskWaitingForItsTurn() async {
+		let taskAllowedToReport = Semaphore()
+		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+		// Never await this task before it reports its priority: awaiting it would escalate it without the queue's help.
+		let task = Task(priority: .background, on: systemUnderTest, isolatedTo: Counter()) { _ in
+			await taskAllowedToReport.wait()
+			try doWork()
+			prioritiesContinuation.yield(Task.currentPriority)
+		}
+		// This task waits for the task's turn to end, and so escalates the task before this call returns.
+		let finishWaiting = runTaskWaitingForNextTurn(of: systemUnderTest.turns, withPriority: .high)
+		await taskAllowedToReport.signal()
+		var prioritiesIterator = priorities.makeAsyncIterator()
+		let priority = await prioritiesIterator.next()
+		await finishWaiting()
+		_ = await task.result
+		#expect(priority.map { $0 >= .high } == true)
+	}
+
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
+	func task_isEscalatedWhenItsTurnBeginsWhileHigherPriorityTaskWaits() async {
+		let firstTaskStarted = Semaphore()
+		let firstTaskAllowedToEnd = Semaphore()
+		let firstTask = Task(priority: .background, on: systemUnderTest) {
+			await firstTaskStarted.signal()
+			await firstTaskAllowedToEnd.wait()
+		}
+		await firstTaskStarted.wait()
+		let secondTaskAllowedToReport = Semaphore()
+		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+		// Never await this task: awaiting it would escalate it without the queue's help.
+		Task(priority: .background, on: systemUnderTest) {
+			await secondTaskAllowedToReport.wait()
+			prioritiesContinuation.yield(Task.currentPriority)
+		}
+		// This task waits for the second task's turn to end, and so escalates the second task when its turn begins.
+		// It is recorded as waiting before this call returns.
+		let finishWaiting = runTaskWaitingForNextTurn(of: systemUnderTest.turns, withPriority: .high)
+		await firstTaskAllowedToEnd.signal()
+		// The first task completes only once ending its turn has returned, and ending its turn escalates the second task.
+		await firstTask.value
+		// The second task may begin its turn before ending the first task's turn escalates it, so let it report only now.
+		await secondTaskAllowedToReport.signal()
+		var prioritiesIterator = priorities.makeAsyncIterator()
+		let priority = await prioritiesIterator.next()
+		await finishWaiting()
+		#expect(priority.map { $0 >= .high } == true)
+	}
+
 	// MARK: Private
 
 	private let systemUnderTest = FIFOQueue()
