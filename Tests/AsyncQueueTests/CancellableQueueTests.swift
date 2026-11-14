@@ -61,7 +61,7 @@ struct CancellableQueueTests {
 	}
 
 	@Test
-	func cancelTasks_cancelsTaskThatRegisteredCancellationAfterEarlierCancelTasks() {
+	func cancelTasks_cancelsTaskThatRegistersCancellationAfterward() {
 		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
 		let task = Task<Void, Never> {}
 
@@ -70,7 +70,60 @@ struct CancellableQueueTests {
 		systemUnderTest.cancelTasks()
 		systemUnderTest.registerCancellation(forTaskWithIdentifier: identifier, task.cancel)
 
+		#expect(task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_cancelsTaskThatRegistersCancellationAfterRepeatedCancelTasks() {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let task = Task<Void, Never> {}
+
+		let identifier = systemUnderTest.reserveTaskIdentifier()
 		systemUnderTest.cancelTasks()
+		systemUnderTest.cancelTasks()
+		systemUnderTest.registerCancellation(forTaskWithIdentifier: identifier, task.cancel)
+
+		#expect(task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_doesNotCancelTaskThatFinishedBeforeRegisteringCancellationAfterCancelTasks() {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let task = Task<Void, Never> {}
+
+		let identifier = systemUnderTest.reserveTaskIdentifier()
+		systemUnderTest.cancelTasks()
+		systemUnderTest.taskDidFinish(withIdentifier: identifier)
+		systemUnderTest.registerCancellation(forTaskWithIdentifier: identifier, task.cancel)
+
+		#expect(!task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_doesNotCancelTrackedTaskThatFinishedWhileBeingCreated() {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+
+		// Finish the task while it is being created, as a task that runs to completion on another thread can before
+		// `trackTask` registers its cancellation.
+		let task = systemUnderTest.trackTask(performing: ()) { identifier, _ in
+			systemUnderTest.taskDidFinish(withIdentifier: identifier)
+			return Task<Void, Never> {}
+		}
+		systemUnderTest.cancelTasks()
+
+		#expect(!task.isCancelled)
+	}
+
+	@Test
+	func cancelTasks_calledWhileTrackedTaskIsBeingCreated_cancelsTask() {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+
+		// Cancel tasks while the task is being created, as another thread, or the task's own operation, can before
+		// `trackTask` registers the task's cancellation.
+		let task = systemUnderTest.trackTask(performing: ()) { _, _ in
+			systemUnderTest.cancelTasks()
+			return Task<Void, Never> {}
+		}
 
 		#expect(task.isCancelled)
 	}
@@ -421,6 +474,32 @@ struct CancellableQueueTests {
 		// Stop the task even if cancelling tasks did not, so that a regression fails this test instead of hanging it.
 		task.cancel()
 		await task.value
+	}
+
+	@Test
+	func cancelTasks_canBeCalledFromCancellationHandlerOfTaskThatRegistersCancellationAfterward() async {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let handlerInstalled = Semaphore()
+		let taskAllowedToEnd = Semaphore()
+		let identifier = systemUnderTest.reserveTaskIdentifier()
+		let task = Task {
+			await withTaskCancellationHandler {
+				await handlerInstalled.signal()
+				await taskAllowedToEnd.wait()
+			} onCancel: {
+				systemUnderTest.cancelTasks()
+			}
+		}
+		await handlerInstalled.wait()
+
+		// Cancel tasks after the task reserved its identifier but before it registered its cancellation,
+		// so that registering its cancellation cancels the task and runs its cancellation handler.
+		systemUnderTest.cancelTasks()
+		systemUnderTest.registerCancellation(forTaskWithIdentifier: identifier, task.cancel)
+
+		await taskAllowedToEnd.signal()
+		await task.value
+		#expect(task.isCancelled)
 	}
 
 	@Test
