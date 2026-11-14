@@ -105,6 +105,10 @@ extension Task {
 	/// Like a task created with `Task.init(name:priority:operation:)`, the task inherits the task-local values
 	/// and, unless you pass a `priority`, the priority of the code that enqueues it.
 	/// When a higher-priority task awaits the task's value, Swift escalates the task's priority.
+	/// On Linux, and on macOS 26, iOS 26, tvOS 26, watchOS 26, and visionOS 26 or later,
+	/// a task that waits on the queue also escalates the tasks ahead of it to its own priority.
+	/// On earlier releases, the tasks ahead keep their own priority.
+	/// An escalated task keeps that priority until it finishes.
 	///
 	/// Cancelling the task doesn't remove it from the queue: the operation still runs,
 	/// after every task enqueued before it has finished or suspended.
@@ -136,6 +140,7 @@ extension Task {
 			await turn.begin()
 			return await execute(operation, on: executionContext, endingTurn: turn)
 		}
+		turn.register(self)
 	}
 
 	/// Runs the given throwing operation asynchronously
@@ -145,6 +150,10 @@ extension Task {
 	/// Like a task created with `Task.init(name:priority:operation:)`, the task inherits the task-local values
 	/// and, unless you pass a `priority`, the priority of the code that enqueues it.
 	/// When a higher-priority task awaits the task's value, Swift escalates the task's priority.
+	/// On Linux, and on macOS 26, iOS 26, tvOS 26, watchOS 26, and visionOS 26 or later,
+	/// a task that waits on the queue also escalates the tasks ahead of it to its own priority.
+	/// On earlier releases, the tasks ahead keep their own priority.
+	/// An escalated task keeps that priority until it finishes.
 	///
 	/// Cancelling the task doesn't remove it from the queue: the operation still runs,
 	/// after every task enqueued before it has finished or suspended.
@@ -176,6 +185,7 @@ extension Task {
 			await turn.begin()
 			return try await execute(operation, on: executionContext, endingTurn: turn)
 		}
+		turn.register(self)
 	}
 
 	/// Runs the given nonthrowing operation asynchronously
@@ -185,6 +195,10 @@ extension Task {
 	/// Like a task created with `Task.init(name:priority:operation:)`, the task inherits the task-local values
 	/// and, unless you pass a `priority`, the priority of the code that enqueues it.
 	/// When a higher-priority task awaits the task's value, Swift escalates the task's priority.
+	/// On Linux, and on macOS 26, iOS 26, tvOS 26, watchOS 26, and visionOS 26 or later,
+	/// a task that waits on the queue also escalates the tasks ahead of it to its own priority.
+	/// On earlier releases, the tasks ahead keep their own priority.
+	/// An escalated task keeps that priority until it finishes.
 	///
 	/// Cancelling the task doesn't remove it from the queue: the operation still runs,
 	/// after every task enqueued before it has finished or suspended.
@@ -215,6 +229,7 @@ extension Task {
 			await turn.begin()
 			return await executeOnMainActor(operation, endingTurn: turn)
 		}
+		turn.register(self)
 	}
 
 	/// Runs the given throwing operation asynchronously
@@ -224,6 +239,10 @@ extension Task {
 	/// Like a task created with `Task.init(name:priority:operation:)`, the task inherits the task-local values
 	/// and, unless you pass a `priority`, the priority of the code that enqueues it.
 	/// When a higher-priority task awaits the task's value, Swift escalates the task's priority.
+	/// On Linux, and on macOS 26, iOS 26, tvOS 26, watchOS 26, and visionOS 26 or later,
+	/// a task that waits on the queue also escalates the tasks ahead of it to its own priority.
+	/// On earlier releases, the tasks ahead keep their own priority.
+	/// An escalated task keeps that priority until it finishes.
 	///
 	/// Cancelling the task doesn't remove it from the queue: the operation still runs,
 	/// after every task enqueued before it has finished or suspended.
@@ -254,6 +273,7 @@ extension Task {
 			await turn.begin()
 			return try await executeOnMainActor(operation, endingTurn: turn)
 		}
+		turn.register(self)
 	}
 }
 
