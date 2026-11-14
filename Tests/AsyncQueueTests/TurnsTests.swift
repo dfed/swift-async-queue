@@ -349,6 +349,102 @@ struct TurnsTests {
 
 	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
 	@Test
+	func begin_whenWaitingTaskIsEscalated_recordsEscalationAndEscalatesTaskHoldingTurn() async {
+		let systemUnderTest = Turns()
+		let executor = ManualTaskExecutor()
+		let firstTurn = systemUnderTest.reserve()
+		let secondTurn = systemUnderTest.reserve()
+		let waitingTaskInspected = Semaphore()
+		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+		// Never await this task: awaiting it would escalate it without the turns' help.
+		let firstTask = Task(priority: .low) {
+			await firstTurn.begin()
+			// Hold the turn until the test has inspected the waiting task's record.
+			await waitingTaskInspected.wait()
+			let priority = Task.currentPriority
+			// End the turn before reporting, so that the waiting task can take its turn once the priority arrives.
+			firstTurn.end()
+			prioritiesContinuation.yield(priority)
+		}
+		firstTurn.register(firstTask)
+		let waitingTask = Task(executorPreference: executor, priority: .medium) {
+			await secondTurn.begin()
+			secondTurn.end()
+		}
+		secondTurn.register(waitingTask)
+		// Run the waiting task until it waits for its turn, recorded at its own priority.
+		executor.runUntilIdle()
+		// The task is already recorded as waiting, so only its escalation handler can deliver this escalation.
+		// The handler runs on this thread before `escalatePriority(to:)` returns.
+		waitingTask.escalatePriority(to: .high)
+		#expect(systemUnderTest.waitingTaskCount == 1)
+		#expect(systemUnderTest.highestWaitingPriority == .high)
+		await waitingTaskInspected.signal()
+		var prioritiesIterator = priorities.makeAsyncIterator()
+		let priority = await prioritiesIterator.next()
+		executor.runUntilIdle()
+		await waitingTask.value
+		#expect(priority.map { $0 >= .high } == true)
+		#expect(systemUnderTest.waitingTaskCount == 0)
+		#expect(systemUnderTest.highestWaitingPriority == nil)
+	}
+
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
+	func waitingTicket_beforeTaskIsRecordedAsWaiting_doesNotRecordTask() async {
+		let systemUnderTest = Turns()
+		let executor = ManualTaskExecutor()
+		let firstTurn = systemUnderTest.reserve()
+		let secondTurn = systemUnderTest.reserve()
+		let waitingTask = Task(executorPreference: executor, priority: .high) {
+			await secondTurn.begin()
+			secondTurn.end()
+		}
+		// An escalation can reach the waiting task's escalation handler after the handler is installed but before the
+		// task is recorded as waiting. The task's priority already reflects the escalation, so recording the task reads it.
+		systemUnderTest.waitingTicket(secondTurn.ticket, wasEscalatedTo: .high)
+		let waitingTaskCountBeforeTaskWaits = systemUnderTest.waitingTaskCount
+		// Run the waiting task until it waits for its turn.
+		executor.runUntilIdle()
+		let waitingTaskCountWhileTaskWaits = systemUnderTest.waitingTaskCount
+		await firstTurn.begin()
+		// Ending the first turn lets the waiting task take its turn, on the executor.
+		firstTurn.end()
+		executor.runUntilIdle()
+		await waitingTask.value
+		#expect(waitingTaskCountBeforeTaskWaits == 0)
+		#expect(waitingTaskCountWhileTaskWaits == 1)
+		#expect(systemUnderTest.waitingTaskCount == 0)
+	}
+
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
+	func waitingTicket_afterEscalationToHigherPriority_ignoresEscalationToLowerPriority() async {
+		let systemUnderTest = Turns()
+		let executor = ManualTaskExecutor()
+		let firstTurn = systemUnderTest.reserve()
+		let secondTurn = systemUnderTest.reserve()
+		let waitingTask = Task(executorPreference: executor, priority: .low) {
+			await secondTurn.begin()
+			secondTurn.end()
+		}
+		// Run the waiting task until it waits for its turn, recorded at its own priority.
+		executor.runUntilIdle()
+		// The runtime raises a task's priority before it runs the task's escalation handler, so escalations that race
+		// can reach the handler out of order. Deliver an escalation to `.high`, and then a late escalation to `.medium`.
+		systemUnderTest.waitingTicket(secondTurn.ticket, wasEscalatedTo: .high)
+		systemUnderTest.waitingTicket(secondTurn.ticket, wasEscalatedTo: .medium)
+		#expect(systemUnderTest.highestWaitingPriority == .high)
+		await firstTurn.begin()
+		// Ending the first turn lets the waiting task take its turn, on the executor.
+		firstTurn.end()
+		executor.runUntilIdle()
+		await waitingTask.value
+		#expect(systemUnderTest.waitingTaskCount == 0)
+	}
+
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
 	func begin_whenTaskHoldingTurnHasEscalationHandlerThatUsesTurns_escalatesTaskHoldingTurn() async {
 		let systemUnderTest = Turns()
 		let executor = ManualTaskExecutor()
