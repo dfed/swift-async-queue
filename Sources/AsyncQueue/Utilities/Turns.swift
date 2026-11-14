@@ -64,6 +64,27 @@ final class Turns: Sendable {
 		state.withLock { $0.waitingTaskCounts.values.reduce(0, +) }
 	}
 
+	/// The highest priority of the tasks waiting for their turn whose priority is recorded. Used by tests.
+	var highestWaitingPriority: TaskPriority? {
+		state.withLock(\.highestWaitingPriority)
+	}
+
+	/// Records that the task waiting for `ticket`'s turn was escalated to `priority`, and escalates the task holding the
+	/// current turn to match. Called by the waiting task's escalation handler. Tests call it directly to deliver
+	/// escalations in orders that the runtime allows but cannot be made to produce on demand.
+	func waitingTicket(_ ticket: Ticket, wasEscalatedTo priority: TaskPriority) {
+		let escalateHolder = state.withLock { state -> (@Sendable () -> Void)? in
+			// Ignore the escalation if the ticket is not waiting yet, is no longer waiting, or already waits at this
+			// priority or higher.
+			guard let waitingPriority = ticket.waitingPriority, waitingPriority < priority else { return nil }
+			state.removeWaitingTask(at: waitingPriority)
+			state.addWaitingTask(at: priority)
+			ticket.waitingPriority = priority
+			return state.escalateHolder(to: priority)
+		}
+		escalateHolder?()
+	}
+
 	// MARK: Fileprivate
 
 	fileprivate let escalatesPriority: Bool
@@ -188,18 +209,6 @@ final class Turns: Sendable {
 				continuation.resume()
 			}
 		}
-	}
-
-	private func waitingTicket(_ ticket: Ticket, wasEscalatedTo priority: TaskPriority) {
-		let escalateHolder = state.withLock { state -> (@Sendable () -> Void)? in
-			// Ignore the escalation if the ticket is no longer waiting, or already waits at this priority.
-			guard let waitingPriority = ticket.waitingPriority, waitingPriority < priority else { return nil }
-			state.removeWaitingTask(at: waitingPriority)
-			state.addWaitingTask(at: priority)
-			ticket.waitingPriority = priority
-			return state.escalateHolder(to: priority)
-		}
-		escalateHolder?()
 	}
 }
 
