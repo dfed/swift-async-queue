@@ -697,6 +697,59 @@ struct TurnsTests {
 		#expect(priority.map { $0 >= .high } == true)
 	}
 
+	@Test
+	func isIdle_beforeAnyTurnIsReserved_isTrue() {
+		let systemUnderTest = Turns()
+		#expect(systemUnderTest.isIdle)
+	}
+
+	@Test
+	func isIdle_afterTurnIsReserved_isFalseUntilTurnEnds() async {
+		let systemUnderTest = Turns()
+		let turn = systemUnderTest.reserve()
+		let isIdleAfterTurnWasReserved = systemUnderTest.isIdle
+		await turn.begin()
+		let isIdleAfterTurnBegan = systemUnderTest.isIdle
+		turn.end()
+		#expect(!isIdleAfterTurnWasReserved)
+		#expect(!isIdleAfterTurnBegan)
+		#expect(systemUnderTest.isIdle)
+	}
+
+	@Test
+	func isIdle_withSeveralTurns_isFalseUntilLastTurnEnds() async {
+		let systemUnderTest = Turns()
+		let firstTurn = systemUnderTest.reserve()
+		let secondTurn = systemUnderTest.reserve()
+		let lastTurn = systemUnderTest.reserve()
+		await firstTurn.begin()
+		firstTurn.end()
+		let isIdleAfterFirstTurnEnded = systemUnderTest.isIdle
+		await secondTurn.begin()
+		secondTurn.end()
+		let isIdleAfterSecondTurnEnded = systemUnderTest.isIdle
+		await lastTurn.begin()
+		lastTurn.end()
+		#expect(!isIdleAfterFirstTurnEnded)
+		#expect(!isIdleAfterSecondTurnEnded)
+		#expect(systemUnderTest.isIdle)
+	}
+
+	@Test
+	func isIdle_afterTurnIsReservedOnceEveryEarlierTurnEnded_isFalseUntilThatTurnEnds() async {
+		let systemUnderTest = Turns()
+		let firstTurn = systemUnderTest.reserve()
+		await firstTurn.begin()
+		firstTurn.end()
+		// The value is a snapshot: reserving another turn makes the turns busy again.
+		let laterTurn = systemUnderTest.reserve()
+		let isIdleAfterLaterTurnWasReserved = systemUnderTest.isIdle
+		await laterTurn.begin()
+		laterTurn.end()
+		#expect(!isIdleAfterLaterTurnWasReserved)
+		#expect(systemUnderTest.isIdle)
+	}
+
 	// MARK: Private
 
 	/// Creates a task that takes `turn` and, once its turn begins, installs an escalation handler that uses `turns`,

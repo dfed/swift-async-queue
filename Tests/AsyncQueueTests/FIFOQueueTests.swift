@@ -571,6 +571,145 @@ struct FIFOQueueTests {
 	}
 
 	@Test
+	func isIdle_onNewQueue_isTrue() {
+		#expect(systemUnderTest.isIdle)
+	}
+
+	@Test
+	func isIdle_afterTaskIsEnqueuedWhileOperationCannotReturn_isFalse() async {
+		let operationAllowedToReturn = Semaphore()
+		let task = Task(on: systemUnderTest) {
+			await operationAllowedToReturn.wait()
+		}
+		// `Task(on:)` takes the task's place on the queue before it returns, and the operation cannot return yet.
+		let isIdleAfterTaskWasEnqueued = systemUnderTest.isIdle
+		await operationAllowedToReturn.signal()
+		_ = await task.value
+		#expect(!isIdleAfterTaskWasEnqueued)
+	}
+
+	@Test
+	func isIdle_whileOperationIsSuspended_isFalseUntilOperationReturns() async {
+		let operationStarted = Semaphore()
+		let operationAllowedToReturn = Semaphore()
+		let task = Task(on: systemUnderTest) {
+			await operationStarted.signal()
+			await operationAllowedToReturn.wait()
+		}
+		await operationStarted.wait()
+		// The task holds its place on the queue until its operation returns.
+		let isIdleWhileOperationWasSuspended = systemUnderTest.isIdle
+		await operationAllowedToReturn.signal()
+		await task.value
+		#expect(!isIdleWhileOperationWasSuspended)
+		#expect(systemUnderTest.isIdle)
+	}
+
+	@Test
+	func isIdle_whileThrowingOperationIsSuspended_isFalseUntilOperationThrows() async {
+		struct TestError: Error {}
+		let operationStarted = Semaphore()
+		let operationAllowedToThrow = Semaphore()
+		let task = Task(on: systemUnderTest) {
+			await operationStarted.signal()
+			await operationAllowedToThrow.wait()
+			throw TestError()
+		}
+		await operationStarted.wait()
+		// The task holds its place on the queue until its operation throws.
+		let isIdleWhileOperationWasSuspended = systemUnderTest.isIdle
+		await operationAllowedToThrow.signal()
+		await #expect(throws: TestError.self) { try await task.value }
+		#expect(!isIdleWhileOperationWasSuspended)
+		#expect(systemUnderTest.isIdle)
+	}
+
+	@Test
+	func isIdle_whileOperationIsolatedToActorIsSuspended_isFalseUntilOperationReturns() async {
+		let operationStarted = Semaphore()
+		let operationAllowedToReturn = Semaphore()
+		let task = Task(on: systemUnderTest, isolatedTo: Counter()) { _ in
+			await operationStarted.signal()
+			await operationAllowedToReturn.wait()
+		}
+		await operationStarted.wait()
+		// The task holds its place on the queue until its operation returns.
+		let isIdleWhileOperationWasSuspended = systemUnderTest.isIdle
+		await operationAllowedToReturn.signal()
+		await task.value
+		#expect(!isIdleWhileOperationWasSuspended)
+		#expect(systemUnderTest.isIdle)
+	}
+
+	@Test
+	func isIdle_whileThrowingOperationIsolatedToActorIsSuspended_isFalseUntilOperationThrows() async {
+		struct TestError: Error {}
+		let operationStarted = Semaphore()
+		let operationAllowedToThrow = Semaphore()
+		let task = Task(on: systemUnderTest, isolatedTo: Counter()) { _ in
+			await operationStarted.signal()
+			await operationAllowedToThrow.wait()
+			throw TestError()
+		}
+		await operationStarted.wait()
+		// The task holds its place on the queue until its operation throws.
+		let isIdleWhileOperationWasSuspended = systemUnderTest.isIdle
+		await operationAllowedToThrow.signal()
+		await #expect(throws: TestError.self) { try await task.value }
+		#expect(!isIdleWhileOperationWasSuspended)
+		#expect(systemUnderTest.isIdle)
+	}
+
+	@Test
+	func isIdle_withCancelledTask_isFalseUntilItsOperationReturns() async {
+		let firstOperationAllowedToReturn = Semaphore()
+		let cancelledOperationStarted = Semaphore()
+		let cancelledOperationAllowedToReturn = Semaphore()
+		let firstTask = Task(on: systemUnderTest) {
+			await firstOperationAllowedToReturn.wait()
+		}
+		let cancelledTask = Task(on: systemUnderTest) {
+			await cancelledOperationStarted.signal()
+			await cancelledOperationAllowedToReturn.wait()
+			return Task.isCancelled
+		}
+		// The first operation cannot return yet, so this cancels the task while it waits on the queue.
+		cancelledTask.cancel()
+		await firstOperationAllowedToReturn.signal()
+		_ = await firstTask.value
+		// The cancelled task keeps its place on the queue, and its operation still runs.
+		let isIdleAfterFirstTaskCompleted = systemUnderTest.isIdle
+		await cancelledOperationStarted.wait()
+		let isIdleWhileCancelledOperationWasSuspended = systemUnderTest.isIdle
+		await cancelledOperationAllowedToReturn.signal()
+		let wasCancelledWhileOperationRan = await cancelledTask.value
+		#expect(!isIdleAfterFirstTaskCompleted)
+		#expect(!isIdleWhileCancelledOperationWasSuspended)
+		#expect(wasCancelledWhileOperationRan)
+		#expect(systemUnderTest.isIdle)
+	}
+
+	@Test
+	func isIdle_withSeveralTasks_isFalseUntilLastOperationReturns() async {
+		let firstOperationAllowedToReturn = Semaphore()
+		let lastOperationAllowedToReturn = Semaphore()
+		let firstTask = Task(on: systemUnderTest) {
+			await firstOperationAllowedToReturn.wait()
+		}
+		let lastTask = Task(on: systemUnderTest) {
+			await lastOperationAllowedToReturn.wait()
+		}
+		await firstOperationAllowedToReturn.signal()
+		_ = await firstTask.value
+		// The last operation cannot return yet, so the last task still holds its place on the queue.
+		let isIdleAfterFirstTaskCompleted = systemUnderTest.isIdle
+		await lastOperationAllowedToReturn.signal()
+		_ = await lastTask.value
+		#expect(!isIdleAfterFirstTaskCompleted)
+		#expect(systemUnderTest.isIdle)
+	}
+
+	@Test
 	func task_seesCallersTaskLocalValues() async throws {
 		let systemUnderTest = TestTaskLocal.$value.withValue("queue creator") {
 			FIFOQueue()
