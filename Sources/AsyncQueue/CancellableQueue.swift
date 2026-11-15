@@ -172,6 +172,7 @@ extension Task {
 	///   - priority: The priority of the task.
 	///     Pass `nil` to inherit the priority of the code that enqueues the task,
 	///     as a task created with `Task.init(name:priority:operation:)` does.
+	///     If the queue was created with a higher priority, the task runs at the queue's priority instead.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
@@ -219,6 +220,7 @@ extension Task {
 	///   - priority: The priority of the task.
 	///     Pass `nil` to inherit the priority of the code that enqueues the task,
 	///     as a task created with `Task.init(name:priority:operation:)` does.
+	///     If the queue was created with a higher priority, the task runs at the queue's priority instead.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
@@ -266,6 +268,7 @@ extension Task {
 	///   - priority: The priority of the task.
 	///     Pass `nil` to inherit the priority of the code that enqueues the task,
 	///     as a task created with `Task.init(name:priority:operation:)` does.
+	///     If the queue was created with a higher priority, the task runs at the queue's priority instead.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
@@ -313,6 +316,7 @@ extension Task {
 	///   - priority: The priority of the task.
 	///     Pass `nil` to inherit the priority of the code that enqueues the task,
 	///     as a task created with `Task.init(name:priority:operation:)` does.
+	///     If the queue was created with a higher priority, the task runs at the queue's priority instead.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
