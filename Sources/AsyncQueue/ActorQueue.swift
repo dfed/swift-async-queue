@@ -55,7 +55,13 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
 	// MARK: Initialization
 
 	/// Creates an actor queue.
-	public init() {}
+	/// - Parameter priority: The lowest priority at which the queue's tasks run.
+	///   A task that would run at a lower priority runs at this priority instead.
+	///   Pass `nil` to run each task at the priority you pass to `Task(on:)`,
+	///   or, if you pass `nil` there too, at the priority of the code that enqueues it.
+	public init(priority: TaskPriority? = nil) {
+		minimumPriority = MinimumPriority(priority)
+	}
 
 	// MARK: Public
 
@@ -89,6 +95,9 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
 
 	/// Hands out turns to begin executing on the adopted actor, in the order in which tasks are enqueued.
 	let turns = Turns()
+
+	/// The priority that the queue gives each of its tasks at least.
+	let minimumPriority: MinimumPriority
 
 	// MARK: Fileprivate
 
@@ -140,6 +149,7 @@ extension Task {
 	///   - priority: The priority of the task.
 	///     Pass `nil` to inherit the priority of the code that enqueues the task,
 	///     as a task created with `Task.init(name:priority:operation:)` does.
+	///     If the queue was created with a higher priority, the task runs at the queue's priority instead.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
@@ -151,7 +161,7 @@ extension Task {
 	) where Failure == Never {
 		let executionContext = actorQueue.executionContext
 		let turn = actorQueue.turns.reserve()
-		self.init(name: name, priority: priority) {
+		self.init(name: name, priority: actorQueue.minimumPriority.priority(forTaskEnqueuedWith: priority)) {
 			await turn.begin()
 			return await execute(operation, on: executionContext, endingTurn: turn)
 		}
@@ -185,6 +195,7 @@ extension Task {
 	///   - priority: The priority of the task.
 	///     Pass `nil` to inherit the priority of the code that enqueues the task,
 	///     as a task created with `Task.init(name:priority:operation:)` does.
+	///     If the queue was created with a higher priority, the task runs at the queue's priority instead.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
@@ -196,7 +207,7 @@ extension Task {
 	) where Failure == any Error {
 		let executionContext = actorQueue.executionContext
 		let turn = actorQueue.turns.reserve()
-		self.init(name: name, priority: priority) {
+		self.init(name: name, priority: actorQueue.minimumPriority.priority(forTaskEnqueuedWith: priority)) {
 			await turn.begin()
 			return try await execute(operation, on: executionContext, endingTurn: turn)
 		}
@@ -230,6 +241,7 @@ extension Task {
 	///   - priority: The priority of the task.
 	///     Pass `nil` to inherit the priority of the code that enqueues the task,
 	///     as a task created with `Task.init(name:priority:operation:)` does.
+	///     If the queue was created with a higher priority, the task runs at the queue's priority instead.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
@@ -240,7 +252,7 @@ extension Task {
 		operation: @MainActor @escaping () async -> Success,
 	) where Failure == Never {
 		let turn = actorQueue.turns.reserve()
-		self.init(name: name, priority: priority) {
+		self.init(name: name, priority: actorQueue.minimumPriority.priority(forTaskEnqueuedWith: priority)) {
 			await turn.begin()
 			return await executeOnMainActor(operation, endingTurn: turn)
 		}
@@ -274,6 +286,7 @@ extension Task {
 	///   - priority: The priority of the task.
 	///     Pass `nil` to inherit the priority of the code that enqueues the task,
 	///     as a task created with `Task.init(name:priority:operation:)` does.
+	///     If the queue was created with a higher priority, the task runs at the queue's priority instead.
 	///   - actorQueue: The queue on which to enqueue the task.
 	///   - operation: The operation to perform.
 	@discardableResult
@@ -284,7 +297,7 @@ extension Task {
 		operation: @escaping @MainActor () async throws -> Success,
 	) where Failure == any Error {
 		let turn = actorQueue.turns.reserve()
-		self.init(name: name, priority: priority) {
+		self.init(name: name, priority: actorQueue.minimumPriority.priority(forTaskEnqueuedWith: priority)) {
 			await turn.begin()
 			return try await executeOnMainActor(operation, endingTurn: turn)
 		}
@@ -322,6 +335,10 @@ private func executeOnMainActor<Success>(
 
 extension MainActor {
 	/// A global instance of an `ActorQueue<MainActor>`.
+	///
+	/// This queue has no priority of its own: each task runs at the priority you pass to `Task(on:)`,
+	/// or, if you pass `nil`, at the priority of the code that enqueues it.
+	/// Pass a `priority` to `Task(on:)` when you enqueue important work from low-priority code.
 	public static var queue: ActorQueue<MainActor> {
 		mainActorQueue
 	}

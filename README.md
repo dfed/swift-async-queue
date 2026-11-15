@@ -313,7 +313,7 @@ Your operation sees the [task-local values](https://developer.apple.com/document
 ### Priority
 
 - A task runs at the priority you pass to `Task(on:)`. If you pass `nil`, it runs at the priority of the code that enqueues it, as with `Task.init`.
-- `FIFOQueue(priority:)` gives each of the queue's tasks at least that priority. A task that would run at a lower priority runs at the queue's priority instead.
+- `FIFOQueue(priority:)` and `ActorQueue(priority:)` give each of the queue's tasks at least that priority. A task that would run at a lower priority runs at the queue's priority instead. `MainActor.queue` has no priority of its own.
 - When a higher-priority task awaits a task's value, Swift raises, or *escalates*, that task's priority, as it does for any task.
 - On Linux, and on macOS 26, iOS 26, tvOS 26, watchOS 26, and visionOS 26 or later, a task that waits in a queue also raises the priority of the tasks ahead of it to its own priority. That way, the tasks ahead of a high-priority task don't run at a lower priority while it waits. On earlier releases, the tasks ahead keep their own priority.
 - A task keeps a raised priority until it finishes.
@@ -332,9 +332,10 @@ Cancellation is [cooperative](https://docs.swift.org/swift-book/documentation/th
 - **Swift and platform versions.** Version 2.0 requires Swift 6.4 and newer platform versions; see [Installation](#installation). Update your toolchain and deployment targets.
 - **Priority.** An operation you enqueue without a priority now runs at the priority of the code that enqueues it. In 1.x, a `FIFOQueue` created without a priority ran it at `.medium`, and an `ActorQueue` ran it at the priority of the code that created the queue.
   - On a `FIFOQueue`, a task enqueued from low-priority code now runs at low priority, and the tasks behind it wait for it. To keep the 1.x priority, create the queue with `FIFOQueue(priority: .medium)`.
-  - On an `ActorQueue`, pass `priority:` to `Task(on:)` when you enqueue important work from low-priority code.
+  - On an `ActorQueue`, a task enqueued from low-priority code now runs at low priority. To keep its tasks at the 1.x priority or higher, create the queue with the priority of the code that creates it, such as `ActorQueue(priority: .medium)`.
+  - On `MainActor.queue`, pass `priority:` to `Task(on:)` when you enqueue important work from low-priority code.
 - **Task-local values.** An operation now sees the task-local values of the code that enqueues it. In 1.x, an operation on an `ActorQueue` saw the values of the code that created the queue, and an operation on a `FIFOQueue` saw none. You need to change your code only if an operation relied on the 1.x values.
-- **Queue names.** `FIFOQueue(name:priority:)` and `ActorQueue(name:)` are removed, because operations now run in the task that `Task(on:)` returns. Use `FIFOQueue(priority:)` and `ActorQueue()`, and pass `name:` to `Task(on:)` to name each task instead.
+- **Queue names.** `FIFOQueue(name:priority:)` and `ActorQueue(name:)` are removed, because operations now run in the task that `Task(on:)` returns. Use `FIFOQueue(priority:)` and `ActorQueue(priority:)`, and pass `name:` to `Task(on:)` to name each task instead.
 
 ## Installation
 
