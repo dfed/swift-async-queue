@@ -313,7 +313,7 @@ Your operation sees the [task-local values](https://developer.apple.com/document
 ### Priority
 
 - A task runs at the priority you pass to `Task(on:)`. If you pass `nil`, it runs at the priority of the code that enqueues it, as with `Task.init`.
-- `FIFOQueue(priority:)` gives each of the queue's tasks at least that priority. A task that would run at a lower priority runs at the queue's priority instead.
+- `FIFOQueue(priority:)` and `ActorQueue(priority:)` give each of the queue's tasks at least that priority. A task that would run at a lower priority runs at the queue's priority instead. `MainActor.queue` has no priority of its own.
 - When a higher-priority task awaits a task's value, Swift raises, or *escalates*, that task's priority, as it does for any task.
 - On Linux, and on macOS 26, iOS 26, tvOS 26, watchOS 26, and visionOS 26 or later, a task that waits in a queue also raises the priority of the tasks ahead of it to its own priority. That way, the tasks ahead of a high-priority task don't run at a lower priority while it waits. On earlier releases, the tasks ahead keep their own priority.
 - A task keeps a raised priority until it finishes.

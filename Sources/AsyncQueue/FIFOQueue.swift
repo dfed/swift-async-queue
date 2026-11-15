@@ -35,7 +35,7 @@ public final class FIFOQueue: Sendable {
 	///   Pass `nil` to run each task at the priority you pass to `Task(on:)`,
 	///   or, if you pass `nil` there too, at the priority of the code that enqueues it.
 	public init(priority: TaskPriority? = nil) {
-		self.priority = priority
+		minimumPriority = MinimumPriority(priority)
 	}
 
 	// MARK: Public
@@ -87,37 +87,8 @@ public final class FIFOQueue: Sendable {
 	/// Hands out turns to execute, in the order in which tasks are enqueued.
 	let turns = Turns()
 
-	// MARK: Fileprivate
-
-	/// Returns the priority with which to create a task that was enqueued with the given priority.
-	/// - Parameter taskPriority: The priority with which the task was enqueued. `nil` means the priority of the enqueuing context.
-	fileprivate func priority(forTaskEnqueuedWith taskPriority: TaskPriority?) -> TaskPriority? {
-		if let priority, Self.priorityOfNewTask(enqueuedWith: taskPriority) < priority {
-			priority
-		} else {
-			// Keep the enqueued priority when it suffices, so that `Task` determines the task's priority itself.
-			taskPriority
-		}
-	}
-
-	/// Returns the priority that `Task.init(priority:)` gives a task created in the current context with the given priority.
-	private static func priorityOfNewTask(enqueuedWith taskPriority: TaskPriority?) -> TaskPriority {
-		// `Task` treats a priority with a raw value of zero as no priority.
-		if let taskPriority, taskPriority.rawValue != 0 {
-			return taskPriority
-		} else {
-			// Within a task, a new task inherits the task's base priority, not its escalated priority.
-			// Outside of a task, a new task takes the current thread's priority, or `.medium` if the thread has none.
-			let inheritedPriority = Task.basePriority ?? Task.currentPriority
-			guard inheritedPriority.rawValue != 0 else { return .medium }
-			// `Task` lowers an inherited user-interactive priority to user-initiated, which is `.high`.
-			return min(inheritedPriority, .high)
-		}
-	}
-
-	// MARK: Private
-
-	private let priority: TaskPriority?
+	/// The priority that the queue gives each of its tasks at least.
+	let minimumPriority: MinimumPriority
 }
 
 extension Task {
@@ -160,7 +131,7 @@ extension Task {
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async -> Success,
 	) where Failure == Never {
 		let turn = fifoQueue.turns.reserve()
-		self.init(name: name, priority: fifoQueue.priority(forTaskEnqueuedWith: priority)) {
+		self.init(name: name, priority: fifoQueue.minimumPriority.priority(forTaskEnqueuedWith: priority)) {
 			await turn.begin()
 			defer { turn.end() }
 			return await operation()
@@ -207,7 +178,7 @@ extension Task {
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async throws -> Success,
 	) where Failure == any Error {
 		let turn = fifoQueue.turns.reserve()
-		self.init(name: name, priority: fifoQueue.priority(forTaskEnqueuedWith: priority)) {
+		self.init(name: name, priority: fifoQueue.minimumPriority.priority(forTaskEnqueuedWith: priority)) {
 			await turn.begin()
 			defer { turn.end() }
 			return try await operation()
@@ -256,7 +227,7 @@ extension Task {
 		operation: @Sendable @escaping (isolated ActorType) async -> Success,
 	) where Failure == Never {
 		let turn = fifoQueue.turns.reserve()
-		self.init(name: name, priority: fifoQueue.priority(forTaskEnqueuedWith: priority)) {
+		self.init(name: name, priority: fifoQueue.minimumPriority.priority(forTaskEnqueuedWith: priority)) {
 			await turn.begin()
 			defer { turn.end() }
 			return await operation(isolatedActor)
@@ -305,7 +276,7 @@ extension Task {
 		operation: @Sendable @escaping (isolated ActorType) async throws -> Success,
 	) where Failure == any Error {
 		let turn = fifoQueue.turns.reserve()
-		self.init(name: name, priority: fifoQueue.priority(forTaskEnqueuedWith: priority)) {
+		self.init(name: name, priority: fifoQueue.minimumPriority.priority(forTaskEnqueuedWith: priority)) {
 			await turn.begin()
 			defer { turn.end() }
 			return try await operation(isolatedActor)
