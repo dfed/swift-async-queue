@@ -38,6 +38,50 @@ public final class FIFOQueue: Sendable {
 		self.priority = priority
 	}
 
+	// MARK: Public
+
+	/// Whether every task you enqueued on this queue has finished.
+	///
+	/// A task counts from the moment you enqueue it until its operation returns or throws.
+	/// A task that is suspended at an `await` hasn't finished,
+	/// so an operation that reads this property on its own queue always reads `false`.
+	/// A cancelled task hasn't finished either: it keeps its place in the queue, and its operation still runs.
+	/// A task runs alongside the code that enqueues it, so the task might finish before that code reads this property.
+	/// If the task's operation needs an actor that the code is running on, though,
+	/// the task can't finish until the code suspends or returns.
+	///
+	/// The value can change as soon as you read it: a task you enqueue afterward makes the queue busy again.
+	/// If one actor enqueues every task on the queue, that actor can read this property and then safely remove an idle queue,
+	/// without suspending between the read and the removal.
+	/// No task can be enqueued in between, and a task that the actor enqueues afterward on a new queue
+	/// runs after every task on the removed queue, because they have all finished.
+	/// For example, an actor that keeps one queue per document can remove the queues of documents whose work has finished:
+	///
+	/// ```swift
+	/// actor DocumentStore {
+	///     func save(_ contents: String, as name: String) -> Task<Void, Never> {
+	///         let queue = queues[name] ?? FIFOQueue()
+	///         queues[name] = queue
+	///         return Task(on: queue) {
+	///             await self.write(contents, as: name)
+	///         }
+	///     }
+	///
+	///     func removeIdleQueues() {
+	///         queues = queues.filter { !$0.value.isIdle }
+	///     }
+	///
+	///     private func write(_ contents: String, as name: String) async {
+	///         // Write implementation…
+	///     }
+	///
+	///     private var queues = [String: FIFOQueue]()
+	/// }
+	/// ```
+	public var isIdle: Bool {
+		turns.isIdle
+	}
+
 	// MARK: Internal
 
 	/// Hands out turns to execute, in the order in which tasks are enqueued.

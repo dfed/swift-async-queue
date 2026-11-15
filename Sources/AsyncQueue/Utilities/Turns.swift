@@ -59,6 +59,13 @@ final class Turns: Sendable {
 		return Turn(turns: self, previousTicket: previousTicket, ticket: ticket)
 	}
 
+	/// Whether every turn reserved so far has ended.
+	///
+	/// A turn ends only after every turn reserved before it has ended, so every turn has ended once the most recently reserved turn has.
+	var isIdle: Bool {
+		state.withLock { $0.lastTicket?.hasEnded ?? true }
+	}
+
 	/// The number of tasks waiting for their turn whose priority is recorded. Used by tests.
 	var waitingTaskCount: Int {
 		state.withLock { $0.waitingTaskCounts.values.reduce(0, +) }

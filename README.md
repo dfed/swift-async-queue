@@ -265,6 +265,43 @@ Task(on: cancellableQueue) {
 }
 ```
 
+## Checking whether a queue is idle
+
+A `FIFOQueue` and an `ActorQueue` each have an `isIdle` property:
+
+- A `FIFOQueue` is idle when every task you enqueued on it has finished. A task that is suspended at an `await` hasn't finished. Neither has a cancelled task: it keeps its place, and its operation still runs.
+- An `ActorQueue` is idle when every task you enqueued on it has started running on the actor. The operations of its tasks might not have finished.
+
+The value can change as soon as you read it: a task you enqueue afterward makes the queue busy again.
+
+For example, here's how an actor that keeps one `FIFOQueue` per document might remove the queues it no longer needs:
+
+```swift
+actor DocumentStore {
+    func save(_ contents: String, as name: String) -> Task<Void, Never> {
+        let queue = queues[name] ?? FIFOQueue()
+        queues[name] = queue
+        return Task(on: queue) {
+            await self.write(contents, as: name)
+        }
+    }
+
+    func removeIdleQueues() {
+        queues = queues.filter { !$0.value.isIdle }
+    }
+
+    private func write(_ contents: String, as name: String) async {
+        // Write implementation…
+    }
+
+    private var queues = [String: FIFOQueue]()
+}
+```
+
+In the code above, the actor enqueues every task and reads `isIdle`, and it doesn't suspend between reading `isIdle` and removing the queue. So no task can be enqueued in between. A document you save after its queue is removed gets a new queue, and its task runs after the tasks of the removed queue, which have all finished.
+
+`CancellableQueue` has no `isIdle` property. To check one, keep a reference to the queue it wraps, and read that queue's `isIdle`.
+
 ## Task-local values, priority, and cancellation
 
 `Task(on:)` creates a new [unstructured task](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/#Unstructured-Concurrency), as `Task.init` does, and your operation runs in that task. So the task behaves like a task you create with `Task.init`.
