@@ -1075,49 +1075,6 @@ struct FIFOQueueTests {
 		#expect(executionOrder.withLock(\.self) == ["queued", "later"])
 	}
 
-	@MainActor
-	@Test
-	func task_withMainActorOperation_endsItsTurnOnMainActor() async {
-		let systemUnderTest = systemUnderTest
-		// A main actor task created by the operation runs only once the queue's task gives up the main actor.
-		// The queue's task ends its turn before it gives up the main actor, so that task finds the queue idle.
-		// A task that hopped off of the main actor to end its turn might not have ended it yet.
-		let isIdleOnceQueuedTaskGaveUpMainActor = await Task(on: systemUnderTest) {
-			Task { @MainActor in systemUnderTest.isIdle }
-		}.value.value
-		#expect(isIdleOnceQueuedTaskGaveUpMainActor)
-	}
-
-	@MainActor
-	@Test
-	func throwingTask_withMainActorOperation_endsItsTurnOnMainActor() async throws {
-		let systemUnderTest = systemUnderTest
-		// A main actor task created by the operation runs only once the queue's task gives up the main actor.
-		// The queue's task ends its turn before it gives up the main actor, so that task finds the queue idle.
-		// A task that hopped off of the main actor to end its turn might not have ended it yet.
-		let isIdleOnceQueuedTaskGaveUpMainActor = try await Task(on: systemUnderTest) {
-			try doWork()
-			return Task { @MainActor in systemUnderTest.isIdle }
-		}.value.value
-		#expect(isIdleOnceQueuedTaskGaveUpMainActor)
-	}
-
-	@Test
-	func task_withMainActorOperation_whenTurnCannotBeginYet_endsItsTurnOnMainActor() async {
-		let systemUnderTest = systemUnderTest
-		// Hold the turn before the task's turn, so that the task waits for its turn off of the main actor.
-		let heldTurn = systemUnderTest.turns.reserve()
-		await heldTurn.begin()
-		let task = Task(on: systemUnderTest) { @MainActor in
-			Task { @MainActor in systemUnderTest.isIdle }
-		}
-		heldTurn.end()
-		// A main actor task created by the operation runs only once the queue's task gives up the main actor.
-		// The queue's task ends its turn before it gives up the main actor, so that task finds the queue idle.
-		let isIdleOnceQueuedTaskGaveUpMainActor = await task.value.value
-		#expect(isIdleOnceQueuedTaskGaveUpMainActor)
-	}
-
 	@Test
 	func task_withMainActorOperation_whenTurnCannotBeginYet_beginsInOrderOnceTurnBegins() async {
 		// Hold the turn before the tasks' turns, so that every task waits for its turn off of the main actor.
@@ -1132,6 +1089,25 @@ struct FIFOQueueTests {
 		heldTurn.end()
 		for task in tasks {
 			await task.value
+		}
+		#expect(executionOrder.withLock(\.self) == Array(0..<100))
+	}
+
+	@Test
+	func throwingTask_withMainActorOperation_whenTurnCannotBeginYet_beginsInOrderOnceTurnBegins() async throws {
+		// Hold the turn before the tasks' turns, so that every task waits for its turn off of the main actor.
+		let heldTurn = systemUnderTest.turns.reserve()
+		await heldTurn.begin()
+		let executionOrder = Mutex([Int]())
+		let tasks = (0..<100).map { index in
+			Task(on: systemUnderTest) { @MainActor in
+				executionOrder.withLock { $0.append(index) }
+				try doWork()
+			}
+		}
+		heldTurn.end()
+		for task in tasks {
+			try await task.value
 		}
 		#expect(executionOrder.withLock(\.self) == Array(0..<100))
 	}

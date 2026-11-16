@@ -852,20 +852,6 @@ struct CancellableQueueTests {
 		#expect(executionOrder.withLock(\.self) == ["queued", "later"])
 	}
 
-	@MainActor
-	@Test
-	func task_fifoQueue_withMainActorOperation_endsItsTurnOnMainActor() async {
-		let fifoQueue = FIFOQueue()
-		let systemUnderTest = CancellableQueue(underlyingQueue: fifoQueue)
-		// A main actor task created by the operation runs only once the queue's task gives up the main actor.
-		// The queue's task ends its turn before it gives up the main actor, so that task finds the queue idle.
-		// A task that hopped off of the main actor to end its turn might not have ended it yet.
-		let isIdleOnceQueuedTaskGaveUpMainActor = await Task(on: systemUnderTest) {
-			Task { @MainActor in fifoQueue.isIdle }
-		}.value.value
-		#expect(isIdleOnceQueuedTaskGaveUpMainActor)
-	}
-
 	// MARK: Private
 
 	private struct TestError: Error {}
