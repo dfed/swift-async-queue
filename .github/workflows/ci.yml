@@ -89,19 +89,25 @@ jobs:
       - name: Export the iOS 18.5 Simulator Runtime
         run: |
           set -x
-          ls -d /Applications/Xcode*.app
           sudo xcode-select --switch /Applications/Xcode_26.1.1.app/Contents/Developer
-          sudo xcodebuild -runFirstLaunch
           mkdir -p runtime
           SECONDS=0
-          # The image already has this runtime installed, so this exports it
-          # without downloading. It can exit with an error after exporting
-          # ("Unable to connect to simulator."), so check for the image instead.
-          sudo xcodebuild -downloadPlatform iOS -buildVersion 22F77 -exportPath runtime || echo "xcodebuild exited with $?"
+          # The image has iOS 18.5 installed as a disk image. Copy that image
+          # directly; `xcodebuild -downloadPlatform -exportPath` exports it too,
+          # but fails at random with "Unable to connect to simulator."
+          xcrun simctl runtime list -j > runtimes.json
+          image=$(python3 -c 'import json,sys; d=json.load(open("runtimes.json")); print(next((v["path"] for v in d.values() if v.get("build") == "22F77" and v.get("path")), ""))')
+          if [ -n "$image" ]; then
+            cp "$image" runtime/iphonesimulator_18.5_22F77.dmg
+          else
+            cat runtimes.json
+            sudo xcodebuild -runFirstLaunch
+            sudo xcodebuild -downloadPlatform iOS -buildVersion 22F77 -exportPath runtime || echo "xcodebuild exited with $?"
+            sudo chown -R "$(whoami)" runtime
+          fi
           echo "Export took ${SECONDS}s"
-          test -f runtime/iphonesimulator_18.5_22F77.dmg
-          sudo chown -R "$(whoami)" runtime
           ls -la runtime
+          test -f runtime/iphonesimulator_18.5_22F77.dmg
       - name: Upload the Runtime
         uses: actions/upload-artifact@v4
         with:
