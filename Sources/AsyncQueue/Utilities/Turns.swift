@@ -38,7 +38,22 @@ final class Turns: Sendable {
 	///   Tests pass `false` to exercise the behavior of runtimes that cannot escalate another task.
 	init(escalatesPriority: Bool = true) {
 		self.escalatesPriority = escalatesPriority
+		#if DEBUG
+			didEndTurn = nil
+		#endif
 	}
+
+	#if DEBUG
+		/// Creates turns that call `didEndTurn` each time a turn ends, from the code that ends it.
+		///
+		/// Tests use this to check where a queue's task ends its turn. This initializer exists only in debug builds,
+		/// so release builds pay nothing for it.
+		/// - Parameter didEndTurn: Called each time a turn ends, after the turn has ended.
+		init(didEndTurn: @escaping @Sendable () -> Void) {
+			escalatesPriority = true
+			self.didEndTurn = didEndTurn
+		}
+	#endif
 
 	// MARK: Internal
 
@@ -108,6 +123,10 @@ final class Turns: Sendable {
 
 	fileprivate let escalatesPriority: Bool
 
+	#if DEBUG
+		private let didEndTurn: (@Sendable () -> Void)?
+	#endif
+
 	fileprivate func register(
 		escalation escalate: @escaping @Sendable (TaskPriority) -> Void,
 		for ticket: Ticket,
@@ -168,6 +187,9 @@ final class Turns: Sendable {
 		// Escalating before resuming means the next task is scheduled at its escalated priority.
 		escalateNextHolder?()
 		successor?.resume()
+		#if DEBUG
+			didEndTurn?()
+		#endif
 	}
 
 	// MARK: Private

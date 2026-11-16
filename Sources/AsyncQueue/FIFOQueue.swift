@@ -36,7 +36,16 @@ public final class FIFOQueue: Sendable {
 	///   or, if you pass `nil` there too, at the priority of the code that enqueues it.
 	public init(priority: TaskPriority? = nil) {
 		minimumPriority = MinimumPriority(priority)
+		turns = Turns()
 	}
+
+	#if DEBUG
+		/// Creates a FIFO queue that hands out turns from `turns`. Used by tests.
+		init(turns: Turns) {
+			minimumPriority = MinimumPriority(nil)
+			self.turns = turns
+		}
+	#endif
 
 	// MARK: Public
 
@@ -85,7 +94,7 @@ public final class FIFOQueue: Sendable {
 	// MARK: Internal
 
 	/// Hands out turns to execute, in the order in which tasks are enqueued.
-	let turns = Turns()
+	let turns: Turns
 
 	/// The priority that the queue gives each of its tasks at least.
 	let minimumPriority: MinimumPriority
