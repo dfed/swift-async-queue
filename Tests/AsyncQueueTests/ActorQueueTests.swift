@@ -515,32 +515,32 @@ struct ActorQueueTests {
 	}
 
 	@Test
-	func isIdle_onNewQueue_isTrue() {
-		#expect(systemUnderTest.isIdle)
+	func hasStartedAllWork_onNewQueue_isTrue() {
+		#expect(systemUnderTest.hasStartedAllWork)
 	}
 
 	@Test
-	func isIdle_afterTaskIsEnqueued_isFalseUntilTaskIsIsolatedToActor() async {
+	func hasStartedAllWork_afterTaskIsEnqueued_isFalseUntilTaskIsIsolatedToActor() async {
 		let actor = ManuallyExecutedActor()
 		var enqueuedJobs = actor.executor.enqueuedJobs.makeAsyncIterator()
 		let task = Task(on: actor.queue) { actor in
-			actor.queue.isIdle
+			actor.queue.hasStartedAllWork
 		}
 		// `Task(on:)` takes the task's place on the queue before it returns, and the task cannot be isolated to the actor
 		// until the test runs the actor's executor.
-		let isIdleAfterTaskWasEnqueued = actor.queue.isIdle
+		let hadStartedAllWorkAfterTaskWasEnqueued = actor.queue.hasStartedAllWork
 		// Wait for the task to hop to the actor. It has begun executing, but it is not isolated to the actor yet.
 		_ = await enqueuedJobs.next()
-		let isIdleAfterTaskHoppedToActor = actor.queue.isIdle
+		let hadStartedAllWorkAfterTaskHoppedToActor = actor.queue.hasStartedAllWork
 		actor.executor.runUntilIdle()
-		let isIdleWhileOperationExecuted = await task.value
-		#expect(!isIdleAfterTaskWasEnqueued)
-		#expect(!isIdleAfterTaskHoppedToActor)
-		#expect(isIdleWhileOperationExecuted)
+		let hadStartedAllWorkWhileOperationExecuted = await task.value
+		#expect(!hadStartedAllWorkAfterTaskWasEnqueued)
+		#expect(!hadStartedAllWorkAfterTaskHoppedToActor)
+		#expect(hadStartedAllWorkWhileOperationExecuted)
 	}
 
 	@Test
-	func isIdle_whileLastOperationIsSuspended_isTrue() async {
+	func hasStartedAllWork_whileLastOperationIsSuspended_isTrue() async {
 		let operationStarted = Semaphore()
 		let operationAllowedToReturn = Semaphore()
 		let task = Task(on: systemUnderTest) { _ in
@@ -549,23 +549,23 @@ struct ActorQueueTests {
 		}
 		await operationStarted.wait()
 		// The task gave up its place on the queue once it was isolated to the actor, before its operation began.
-		let isIdleWhileOperationWasSuspended = systemUnderTest.isIdle
+		let hadStartedAllWorkWhileOperationWasSuspended = systemUnderTest.hasStartedAllWork
 		await operationAllowedToReturn.signal()
 		await task.value
-		#expect(isIdleWhileOperationWasSuspended)
+		#expect(hadStartedAllWorkWhileOperationWasSuspended)
 	}
 
 	@Test
-	func isIdle_withSeveralTasks_isFalseUntilLastTaskIsIsolatedToActor() async {
+	func hasStartedAllWork_withSeveralTasks_isFalseUntilLastTaskIsIsolatedToActor() async {
 		let actor = ManuallyExecutedActor()
 		var enqueuedJobs = actor.executor.enqueuedJobs.makeAsyncIterator()
 		// Each operation reads the property before it can suspend. The actor executes one job at a time, so the last task
 		// cannot be isolated to the actor while the first task's operation executes.
 		let firstTask = Task(on: actor.queue) { actor in
-			actor.queue.isIdle
+			actor.queue.hasStartedAllWork
 		}
 		let lastTask = Task(on: actor.queue) { actor in
-			actor.queue.isIdle
+			actor.queue.hasStartedAllWork
 		}
 		// Wait for the first task to hop to the actor, then run it. Its operation cannot execute before both tasks are enqueued.
 		_ = await enqueuedJobs.next()
@@ -573,32 +573,32 @@ struct ActorQueueTests {
 		// Wait for the last task to hop to the actor, then run it if the previous call did not already.
 		_ = await enqueuedJobs.next()
 		actor.executor.runUntilIdle()
-		let isIdleWhileFirstOperationExecuted = await firstTask.value
-		let isIdleWhileLastOperationExecuted = await lastTask.value
-		#expect(!isIdleWhileFirstOperationExecuted)
-		#expect(isIdleWhileLastOperationExecuted)
+		let hadStartedAllWorkWhileFirstOperationExecuted = await firstTask.value
+		let hadStartedAllWorkWhileLastOperationExecuted = await lastTask.value
+		#expect(!hadStartedAllWorkWhileFirstOperationExecuted)
+		#expect(hadStartedAllWorkWhileLastOperationExecuted)
 	}
 
 	@Test
-	func isIdle_onMainActorQueue_afterTaskIsEnqueuedWhileCallerHoldsMainActor_isFalseUntilOperationRuns() async {
+	func hasStartedAllWork_onMainActorQueue_afterTaskIsEnqueuedWhileCallerHoldsMainActor_isFalseUntilOperationRuns() async {
 		// Use a queue of our own rather than `MainActor.queue`, which tests running in parallel share.
 		let mainActorQueue = ActorQueue<MainActor>()
 		mainActorQueue.adoptExecutionContext(of: MainActor.shared)
 		// While this closure holds the main actor, the task cannot be isolated to it. The test cannot wait here for the task
 		// to hop to the main actor, so `mainTask_holdsTurnUntilItIsIsolatedToMainActor` covers when the task's turn ends.
-		let (task, isIdleAfterTaskWasEnqueued) = await MainActor.run {
+		let (task, hadStartedAllWorkAfterTaskWasEnqueued) = await MainActor.run {
 			let task = Task(on: mainActorQueue) {
-				mainActorQueue.isIdle
+				mainActorQueue.hasStartedAllWork
 			}
-			return (task, mainActorQueue.isIdle)
+			return (task, mainActorQueue.hasStartedAllWork)
 		}
-		let isIdleWhileOperationExecuted = await task.value
-		#expect(!isIdleAfterTaskWasEnqueued)
-		#expect(isIdleWhileOperationExecuted)
+		let hadStartedAllWorkWhileOperationExecuted = await task.value
+		#expect(!hadStartedAllWorkAfterTaskWasEnqueued)
+		#expect(hadStartedAllWorkWhileOperationExecuted)
 	}
 
 	@Test
-	func isIdle_onMainActorQueue_whileLastOperationIsSuspended_isTrue() async {
+	func hasStartedAllWork_onMainActorQueue_whileLastOperationIsSuspended_isTrue() async {
 		// Use a queue of our own rather than `MainActor.queue`, which tests running in parallel share.
 		let mainActorQueue = ActorQueue<MainActor>()
 		mainActorQueue.adoptExecutionContext(of: MainActor.shared)
@@ -610,10 +610,10 @@ struct ActorQueueTests {
 		}
 		await operationStarted.wait()
 		// The task gave up its place on the queue once it was isolated to the main actor, before its operation began.
-		let isIdleWhileOperationWasSuspended = mainActorQueue.isIdle
+		let hadStartedAllWorkWhileOperationWasSuspended = mainActorQueue.hasStartedAllWork
 		await operationAllowedToReturn.signal()
 		await task.value
-		#expect(isIdleWhileOperationWasSuspended)
+		#expect(hadStartedAllWorkWhileOperationWasSuspended)
 	}
 
 	@Test

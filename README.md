@@ -281,14 +281,14 @@ Cancellation is [cooperative](https://docs.swift.org/swift-book/documentation/th
 - The operation decides how to respond. It can check `Task.isCancelled`, or call `Task.checkCancellation()` to throw a `CancellationError`.
 - An operation that doesn't check for cancellation runs to completion, and the tasks behind it wait for it as usual.
 
-## Checking whether a queue is idle
+## Checking whether a queue has work left
 
-A `FIFOQueue` and an `ActorQueue` each have an `isIdle` property:
+A `FIFOQueue` has an `isIdle` property, and an `ActorQueue` has a `hasStartedAllWork` property:
 
 - A `FIFOQueue` is idle when every task you enqueued on it has finished. A task that is suspended at an `await` hasn't finished.
-- An `ActorQueue` is idle when every task you enqueued on it has started running on the actor. The operations of its tasks might not have finished.
+- An `ActorQueue` has started all of its work when every task you enqueued on it has started running on the actor. The operations of its tasks might not have finished.
 
-The value can change as soon as you read it: a task you enqueue afterward makes the queue busy again.
+Either value can change as soon as you read it: a task you enqueue afterward makes it `false` again.
 
 For example, here's how an actor that keeps one `FIFOQueue` per document might remove the queues it no longer needs:
 
@@ -314,9 +314,9 @@ actor DocumentStore {
 }
 ```
 
-In the code above, the actor both enqueues the tasks and reads `isIdle`, so no task can be enqueued between the check and the removal.
+In the code above, the actor both enqueues the tasks and reads `isIdle`, so no task can be enqueued between the check and the removal. An actor that keeps `ActorQueue`s can remove them the same way by reading `hasStartedAllWork`.
 
-`CancellableQueue` has no `isIdle` property. To check one, keep a reference to the queue it wraps, and read that queue's `isIdle`.
+`CancellableQueue` has neither property. To check one, keep a reference to the queue it wraps, and read that queue's property.
 
 ## Installation
 
