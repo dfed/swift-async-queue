@@ -62,6 +62,23 @@ jobs:
         run: sudo xcode-select --switch /Applications/Xcode_27.2.app/Contents/Developer
       - name: Build and Test Framework
         run: xcrun swift test -c release -Xswiftc -enable-testing
+  tsan:
+    name: "Thread Sanitizer on macOS"
+    runs-on: xcode-27
+    # A test that deadlocks keeps the test run from ending, so stop the
+    # job after 30 minutes rather than at GitHub's six-hour default.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v7
+      - name: Select Xcode Version
+        run: sudo xcode-select --switch /Applications/Xcode_27.2.app/Contents/Developer
+      - name: Build With Thread Sanitizer
+        run: xcrun swift build --build-tests --sanitize=thread
+      - name: Test With Thread Sanitizer
+        run: xcrun swift test --skip-build --sanitize=thread
   linux:
     name: "Build and Test on Linux"
     runs-on: ubuntu-24.04
