@@ -813,6 +813,59 @@ struct CancellableQueueTests {
 		#expect(values == Array(repeating: "caller", count: 8))
 	}
 
+	@MainActor
+	@Test
+	func task_fifoQueue_withMainActorOperation_startsOnMainActorWithoutHoppingThere() async {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let executionOrder = Mutex([String]())
+		// The test holds the main actor, so neither task runs until the test suspends.
+		// A task that starts on the main actor runs before a main actor task created after it.
+		// A task that started elsewhere and then hopped to the main actor would run after that task.
+		let queuedTask = Task(on: systemUnderTest) {
+			executionOrder.withLock { $0.append("queued") }
+		}
+		let laterTask = Task { @MainActor in
+			executionOrder.withLock { $0.append("later") }
+		}
+		await queuedTask.value
+		await laterTask.value
+		#expect(executionOrder.withLock(\.self) == ["queued", "later"])
+	}
+
+	@MainActor
+	@Test
+	func throwingTask_fifoQueue_withMainActorOperation_startsOnMainActorWithoutHoppingThere() async throws {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let executionOrder = Mutex([String]())
+		// The test holds the main actor, so neither task runs until the test suspends.
+		// A task that starts on the main actor runs before a main actor task created after it.
+		// A task that started elsewhere and then hopped to the main actor would run after that task.
+		let queuedTask = Task(on: systemUnderTest) {
+			executionOrder.withLock { $0.append("queued") }
+			try doWork()
+		}
+		let laterTask = Task { @MainActor in
+			executionOrder.withLock { $0.append("later") }
+		}
+		try await queuedTask.value
+		await laterTask.value
+		#expect(executionOrder.withLock(\.self) == ["queued", "later"])
+	}
+
+	@MainActor
+	@Test
+	func task_fifoQueue_withMainActorOperation_endsItsTurnOnMainActor() async {
+		let fifoQueue = FIFOQueue()
+		let systemUnderTest = CancellableQueue(underlyingQueue: fifoQueue)
+		// A main actor task created by the operation runs only once the queue's task gives up the main actor.
+		// The queue's task ends its turn before it gives up the main actor, so that task finds the queue idle.
+		// A task that hopped off of the main actor to end its turn might not have ended it yet.
+		let isIdleOnceQueuedTaskGaveUpMainActor = await Task(on: systemUnderTest) {
+			Task { @MainActor in fifoQueue.isIdle }
+		}.value.value
+		#expect(isIdleOnceQueuedTaskGaveUpMainActor)
+	}
+
 	// MARK: Private
 
 	private struct TestError: Error {}
