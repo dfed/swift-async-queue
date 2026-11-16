@@ -70,8 +70,9 @@ final class Turns: Sendable {
 	}
 
 	/// Records that the task waiting for `ticket`'s turn was escalated to `priority`, and escalates the task holding the
-	/// current turn to match. Called by the waiting task's escalation handler. Tests call it directly to deliver
-	/// escalations in orders that the runtime allows but cannot be made to produce on demand.
+	/// current turn to match from a new task, so the task holding the turn may be escalated after this method returns.
+	/// Called by the waiting task's escalation handler. Tests call it directly to deliver escalations in orders that the
+	/// runtime allows but cannot be made to produce on demand.
 	func waitingTicket(_ ticket: Ticket, wasEscalatedTo priority: TaskPriority) {
 		let escalateHolder = state.withLock { state -> (@Sendable () -> Void)? in
 			// Ignore the escalation if the ticket is not waiting yet, is no longer waiting, or already waits at this
@@ -82,7 +83,17 @@ final class Turns: Sendable {
 			ticket.waitingPriority = priority
 			return state.escalateHolder(to: priority)
 		}
-		escalateHolder?()
+		if let escalateHolder {
+			// The runtime holds the waiting task's status lock while it runs the task's escalation handler, and
+			// escalating the task holding the turn takes that task's status lock. A cancellation handler of the task
+			// holding the turn runs under that task's status lock and may cancel the waiting task, which takes the
+			// locks in the opposite order. Escalate from a new task so that this handler never waits for another
+			// task's status lock. Escalation only raises a task's priority, so escalations that run late or out of
+			// order still leave the task at the highest priority requested.
+			Task.detached(priority: priority) {
+				escalateHolder()
+			}
+		}
 	}
 
 	// MARK: Fileprivate

@@ -59,6 +59,28 @@ func suspendUntilCancelled() async {
 	withExtendedLifetime(untilCancelledContinuation) {}
 }
 
+/// Suspends the calling task until its priority is `priority` or higher.
+///
+/// Returns once the calling task is escalated to `priority` or higher, or right away if it already runs at that priority.
+/// Cancelling the task does not end the wait. If the task is never escalated, this function suspends forever, so a
+/// regression that keeps an escalation from reaching the task hangs the test until the CI job times out.
+@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+func suspendUntilEscalated(to priority: TaskPriority) async {
+	let escalated = Semaphore()
+	await withTaskPriorityEscalationHandler {
+		// An escalation that arrives before the handler is installed is reflected in the task's priority.
+		guard Task.currentPriority < priority else { return }
+		await escalated.wait()
+	} onPriorityEscalated: { _, newPriority in
+		guard newPriority >= priority else { return }
+		// The runtime runs this handler while it holds this task's status lock. Signaling the semaphore may resume this
+		// task, so signal it from another task, after the handler returns.
+		Task.detached {
+			await escalated.signal()
+		}
+	}
+}
+
 /// A serial executor that runs its jobs on a dispatch queue of its own, in the order in which they are enqueued.
 final class DispatchQueueExecutor: SerialExecutor {
 	func enqueue(_ job: consuming ExecutorJob) {
