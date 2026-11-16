@@ -5,6 +5,27 @@ set -x
 export DEVELOPER_DIR=/Applications/Xcode_27.2.app/Contents/Developer
 ls -la runtime
 
+echo "::group::Free disk space"
+df -h /
+xcrun simctl runtime list
+SECONDS=0
+# Keep only the 27.2 runtime of each platform: the jobs test on those.
+for id in $(xcrun simctl runtime list | grep -v ' 27\.2 (' | grep -v '24B91016s' | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}'); do
+	sudo xcrun simctl runtime delete "$id" || true
+done
+# The iPhone-specific 27.2 variant isn't used either.
+for id in $(xcrun simctl runtime list | grep '24B91016s' | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}'); do
+	sudo xcrun simctl runtime delete "$id" || true
+done
+for attempt in $(seq 1 60); do
+	xcrun simctl runtime list | grep -q 'Deleting' || break
+	sleep 5
+done
+echo "Deleting runtimes took ${SECONDS}s"
+xcrun simctl runtime list
+df -h /
+echo "::endgroup::"
+
 echo "::group::Add the runtime"
 find runtime -maxdepth 2 -print
 sudo xcodebuild -runFirstLaunch
