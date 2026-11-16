@@ -79,7 +79,9 @@ jobs:
         export PATH="$TOOLCHAIN:$DEVELOPER_DIR/usr/bin:$PATH"
         SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
         export SDKROOT
-        arch -arm64 "$TOOLCHAIN/swift" build --target AsyncQueue
+        # Under the CodeQL tracer, SwiftPM's sandbox-exec cannot launch the compiled manifest
+        # ("Bad CPU type in executable"), so build without SwiftPM's sandbox.
+        arch -arm64 "$TOOLCHAIN/swift" build --target AsyncQueue --disable-sandbox
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4
