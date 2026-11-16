@@ -79,6 +79,17 @@ jobs:
         run: xcrun swift build --build-tests --sanitize=thread
       - name: Test With Thread Sanitizer
         run: xcrun swift test --skip-build --sanitize=thread
+  ios18-spike:
+    name: "Spike: iOS 18 simulator"
+    runs-on: xcode-27
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v7
+      - name: Install an iOS 18 Simulator and Test on It
+        run: Scripts/spike-old-simulator.sh
   linux:
     name: "Build and Test on Linux"
     runs-on: ubuntu-24.04
