@@ -84,7 +84,7 @@ jobs:
         export PATH="$TOOLCHAIN:$DEVELOPER_DIR/usr/bin:$PATH"
         SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
         export SDKROOT
-        arch -arm64 "$TOOLCHAIN/swift" build --target AsyncQueue
+        arch -arm64 "$TOOLCHAIN/swift" build --target AsyncQueue --disable-sandbox
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4
