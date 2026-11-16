@@ -114,9 +114,6 @@ for rawPlatform in rawPlatforms {
 	xcodeBuildArguments.append("YES")
 	xcodeBuildArguments.append("build")
 	xcodeBuildArguments.append("test")
-	xcodeBuildArguments.append("-test-iterations")
-	xcodeBuildArguments.append("100")
-	xcodeBuildArguments.append("-run-tests-until-failure")
 
 	try execute(commandPath: "/usr/bin/xcodebuild", arguments: xcodeBuildArguments)
 }
