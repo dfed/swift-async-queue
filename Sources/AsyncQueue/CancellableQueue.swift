@@ -376,12 +376,22 @@ extension Task {
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async -> Success,
 	) where Failure == Never {
 		self = fifoQueue.trackTask(performing: operation) { identifier, operation in
-			Task(name: name, priority: priority, on: fifoQueue.underlyingQueue, operation: {
-				defer {
-					fifoQueue.taskDidFinish(withIdentifier: identifier)
-				}
-				return await operation()
-			})
+			if isolation(of: operation) === MainActor.shared {
+				// Isolate this wrapper to the main actor too, so that the underlying queue can start and end the task there.
+				Task(name: name, priority: priority, on: fifoQueue.underlyingQueue, operation: { @MainActor in
+					defer {
+						fifoQueue.taskDidFinish(withIdentifier: identifier)
+					}
+					return await operation()
+				})
+			} else {
+				Task(name: name, priority: priority, on: fifoQueue.underlyingQueue, operation: {
+					defer {
+						fifoQueue.taskDidFinish(withIdentifier: identifier)
+					}
+					return await operation()
+				})
+			}
 		}
 	}
 
@@ -425,12 +435,22 @@ extension Task {
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async throws -> Success,
 	) where Failure == any Error {
 		self = fifoQueue.trackTask(performing: operation) { identifier, operation in
-			Task(name: name, priority: priority, on: fifoQueue.underlyingQueue, operation: {
-				defer {
-					fifoQueue.taskDidFinish(withIdentifier: identifier)
-				}
-				return try await operation()
-			})
+			if isolation(of: operation) === MainActor.shared {
+				// Isolate this wrapper to the main actor too, so that the underlying queue can start and end the task there.
+				Task(name: name, priority: priority, on: fifoQueue.underlyingQueue, operation: { @MainActor in
+					defer {
+						fifoQueue.taskDidFinish(withIdentifier: identifier)
+					}
+					return try await operation()
+				})
+			} else {
+				Task(name: name, priority: priority, on: fifoQueue.underlyingQueue, operation: {
+					defer {
+						fifoQueue.taskDidFinish(withIdentifier: identifier)
+					}
+					return try await operation()
+				})
+			}
 		}
 	}
 

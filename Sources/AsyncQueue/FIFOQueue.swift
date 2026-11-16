@@ -131,10 +131,31 @@ extension Task {
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async -> Success,
 	) where Failure == Never {
 		let turn = fifoQueue.turns.reserve()
-		self.init(name: name, priority: fifoQueue.minimumPriority.priority(forTaskEnqueuedWith: priority)) {
-			await turn.begin()
-			defer { turn.end() }
-			return await operation()
+		let taskPriority = fifoQueue.minimumPriority.priority(forTaskEnqueuedWith: priority)
+		if isolation(of: operation) === MainActor.shared {
+			let operation = UncheckedSendable(operation)
+			if turn.wasCurrentWhenReserved {
+				// The task's turn begins without waiting, so start the task on the main actor rather than hop there.
+				self.init(name: name, priority: taskPriority) { @MainActor in
+					await turn.begin()
+					return await executeOnMainActor(operation, endingTurn: turn)
+				}
+			} else {
+				// A task that waits for its turn resumes on the global concurrent executor whichever executor it waits on,
+				// so wait there rather than take an extra turn on the main actor.
+				self.init(name: name, priority: taskPriority) {
+					await turn.begin()
+					return await executeOnMainActor(operation, endingTurn: turn)
+				}
+			}
+		} else {
+			// A task can switch from the global concurrent executor to an idle actor, and back, without enqueuing a job,
+			// so a task whose operation is isolated to any other actor gains nothing from starting or ending there.
+			self.init(name: name, priority: taskPriority) {
+				await turn.begin()
+				defer { turn.end() }
+				return await operation()
+			}
 		}
 		turn.register(self)
 	}
@@ -178,10 +199,31 @@ extension Task {
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async throws -> Success,
 	) where Failure == any Error {
 		let turn = fifoQueue.turns.reserve()
-		self.init(name: name, priority: fifoQueue.minimumPriority.priority(forTaskEnqueuedWith: priority)) {
-			await turn.begin()
-			defer { turn.end() }
-			return try await operation()
+		let taskPriority = fifoQueue.minimumPriority.priority(forTaskEnqueuedWith: priority)
+		if isolation(of: operation) === MainActor.shared {
+			let operation = UncheckedSendable(operation)
+			if turn.wasCurrentWhenReserved {
+				// The task's turn begins without waiting, so start the task on the main actor rather than hop there.
+				self.init(name: name, priority: taskPriority) { @MainActor in
+					await turn.begin()
+					return try await executeOnMainActor(operation, endingTurn: turn)
+				}
+			} else {
+				// A task that waits for its turn resumes on the global concurrent executor whichever executor it waits on,
+				// so wait there rather than take an extra turn on the main actor.
+				self.init(name: name, priority: taskPriority) {
+					await turn.begin()
+					return try await executeOnMainActor(operation, endingTurn: turn)
+				}
+			}
+		} else {
+			// A task can switch from the global concurrent executor to an idle actor, and back, without enqueuing a job,
+			// so a task whose operation is isolated to any other actor gains nothing from starting or ending there.
+			self.init(name: name, priority: taskPriority) {
+				await turn.begin()
+				defer { turn.end() }
+				return try await operation()
+			}
 		}
 		turn.register(self)
 	}
@@ -283,4 +325,52 @@ extension Task {
 		}
 		turn.register(self)
 	}
+}
+
+// MARK: - Execution
+
+/// The isolation of `operation`.
+///
+/// Reading `isolation` directly from a `sending` parameter of an initializer in an extension of `Task` crashes the
+/// Swift 6.4 compiler, so the initializers read it through this function.
+func isolation(of operation: @isolated(any) () async throws -> some Any) -> (any Actor)? {
+	operation.isolation
+}
+
+/// Executes `operation`, which is isolated to the main actor, and ends `turn` on the main actor once `operation` returns.
+///
+/// Ending the turn on the main actor keeps the task from hopping off of the main actor before it ends its turn.
+@MainActor
+private func executeOnMainActor<Success: Sendable>(
+	_ operation: UncheckedSendable<@isolated(any) () async -> Success>,
+	endingTurn turn: Turn,
+) async -> Success {
+	defer { turn.end() }
+	return await operation.value()
+}
+
+/// Executes `operation`, which is isolated to the main actor, and ends `turn` on the main actor once `operation` returns
+/// or throws.
+///
+/// Ending the turn on the main actor keeps the task from hopping off of the main actor before it ends its turn.
+@MainActor
+private func executeOnMainActor<Success: Sendable>(
+	_ operation: UncheckedSendable<@isolated(any) () async throws -> Success>,
+	endingTurn turn: Turn,
+) async throws -> Success {
+	defer { turn.end() }
+	return try await operation.value()
+}
+
+/// Carries the operation that was sent to a queue's task into that task, and from there to the main actor.
+///
+/// A `sending` operation belongs to its own isolation region, which the task's operation takes over. The compiler cannot
+/// see that a task's operation, which runs only once, gives the operation up when it passes it to the main actor,
+/// so this box asserts it.
+struct UncheckedSendable<Value>: @unchecked Sendable {
+	init(_ value: consuming Value) {
+		self.value = value
+	}
+
+	let value: Value
 }

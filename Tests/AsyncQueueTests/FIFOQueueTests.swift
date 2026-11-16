@@ -21,6 +21,7 @@
 // SOFTWARE.
 
 import Foundation
+import Synchronization
 import Testing
 
 @testable import AsyncQueue
@@ -1035,6 +1036,104 @@ struct FIFOQueueTests {
 		let priority = await prioritiesIterator.next()
 		await finishWaiting()
 		#expect(priority.map { $0 >= .high } == true)
+	}
+
+	@MainActor
+	@Test
+	func task_withMainActorOperation_whenTurnBeginsWithoutWaiting_startsOnMainActorWithoutHoppingThere() async {
+		let executionOrder = Mutex([String]())
+		// The test holds the main actor, so neither task runs until the test suspends.
+		// A task that starts on the main actor runs before a main actor task created after it.
+		// A task that started elsewhere and then hopped to the main actor would run after that task.
+		let queuedTask = Task(on: systemUnderTest) {
+			executionOrder.withLock { $0.append("queued") }
+		}
+		let laterTask = Task { @MainActor in
+			executionOrder.withLock { $0.append("later") }
+		}
+		await queuedTask.value
+		await laterTask.value
+		#expect(executionOrder.withLock(\.self) == ["queued", "later"])
+	}
+
+	@MainActor
+	@Test
+	func throwingTask_withMainActorOperation_whenTurnBeginsWithoutWaiting_startsOnMainActorWithoutHoppingThere() async throws {
+		let executionOrder = Mutex([String]())
+		// The test holds the main actor, so neither task runs until the test suspends.
+		// A task that starts on the main actor runs before a main actor task created after it.
+		// A task that started elsewhere and then hopped to the main actor would run after that task.
+		let queuedTask = Task(on: systemUnderTest) {
+			executionOrder.withLock { $0.append("queued") }
+			try doWork()
+		}
+		let laterTask = Task { @MainActor in
+			executionOrder.withLock { $0.append("later") }
+		}
+		try await queuedTask.value
+		await laterTask.value
+		#expect(executionOrder.withLock(\.self) == ["queued", "later"])
+	}
+
+	@MainActor
+	@Test
+	func task_withMainActorOperation_endsItsTurnOnMainActor() async {
+		let systemUnderTest = systemUnderTest
+		// A main actor task created by the operation runs only once the queue's task gives up the main actor.
+		// The queue's task ends its turn before it gives up the main actor, so that task finds the queue idle.
+		// A task that hopped off of the main actor to end its turn might not have ended it yet.
+		let isIdleOnceQueuedTaskGaveUpMainActor = await Task(on: systemUnderTest) {
+			Task { @MainActor in systemUnderTest.isIdle }
+		}.value.value
+		#expect(isIdleOnceQueuedTaskGaveUpMainActor)
+	}
+
+	@MainActor
+	@Test
+	func throwingTask_withMainActorOperation_endsItsTurnOnMainActor() async throws {
+		let systemUnderTest = systemUnderTest
+		// A main actor task created by the operation runs only once the queue's task gives up the main actor.
+		// The queue's task ends its turn before it gives up the main actor, so that task finds the queue idle.
+		// A task that hopped off of the main actor to end its turn might not have ended it yet.
+		let isIdleOnceQueuedTaskGaveUpMainActor = try await Task(on: systemUnderTest) {
+			try doWork()
+			return Task { @MainActor in systemUnderTest.isIdle }
+		}.value.value
+		#expect(isIdleOnceQueuedTaskGaveUpMainActor)
+	}
+
+	@Test
+	func task_withMainActorOperation_whenTurnCannotBeginYet_endsItsTurnOnMainActor() async {
+		let systemUnderTest = systemUnderTest
+		// Hold the turn before the task's turn, so that the task waits for its turn off of the main actor.
+		let heldTurn = systemUnderTest.turns.reserve()
+		await heldTurn.begin()
+		let task = Task(on: systemUnderTest) { @MainActor in
+			Task { @MainActor in systemUnderTest.isIdle }
+		}
+		heldTurn.end()
+		// A main actor task created by the operation runs only once the queue's task gives up the main actor.
+		// The queue's task ends its turn before it gives up the main actor, so that task finds the queue idle.
+		let isIdleOnceQueuedTaskGaveUpMainActor = await task.value.value
+		#expect(isIdleOnceQueuedTaskGaveUpMainActor)
+	}
+
+	@Test
+	func task_withMainActorOperation_whenTurnCannotBeginYet_beginsInOrderOnceTurnBegins() async {
+		// Hold the turn before the tasks' turns, so that every task waits for its turn off of the main actor.
+		let heldTurn = systemUnderTest.turns.reserve()
+		await heldTurn.begin()
+		let executionOrder = Mutex([Int]())
+		let tasks = (0..<100).map { index in
+			Task(on: systemUnderTest) { @MainActor in
+				executionOrder.withLock { $0.append(index) }
+			}
+		}
+		heldTurn.end()
+		for task in tasks {
+			await task.value
+		}
+		#expect(executionOrder.withLock(\.self) == Array(0..<100))
 	}
 
 	// MARK: Private
