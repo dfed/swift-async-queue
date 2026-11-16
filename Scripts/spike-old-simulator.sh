@@ -6,13 +6,26 @@ export DEVELOPER_DIR=/Applications/Xcode_27.2.app/Contents/Developer
 ls -la runtime
 
 echo "::group::Add the runtime"
+find runtime -maxdepth 2 -print
+sudo xcodebuild -runFirstLaunch
 SECONDS=0
-for image in runtime/*.dmg; do
-	sudo xcrun simctl runtime add "$image"
-	echo "simctl runtime add exit $? after ${SECONDS}s"
+for image in runtime/*; do
+	sudo xcodebuild -importPlatform "$image"
+	echo "xcodebuild -importPlatform $image exit $? after ${SECONDS}s"
+	if ! xcrun simctl list runtimes | grep -q 'iOS 18\.'; then
+		SECONDS=0
+		sudo xcrun simctl runtime add "$image"
+		echo "simctl runtime add $image exit $? after ${SECONDS}s"
+	fi
 done
 xcrun simctl runtime list
 xcrun simctl list runtimes
+echo "::endgroup::"
+
+echo "::group::Prebuild the dyld shared cache"
+SECONDS=0
+sudo xcrun simctl runtime dyld_shared_cache update --all
+echo "dyld_shared_cache update exit $? after ${SECONDS}s"
 echo "::endgroup::"
 
 RUNTIME=$(xcrun simctl list runtimes | grep 'iOS 18\.' | tail -1 | grep -o 'com\.apple\.CoreSimulator\.SimRuntime\.iOS-18-[0-9-]*')
