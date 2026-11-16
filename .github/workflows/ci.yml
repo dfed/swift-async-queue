@@ -47,6 +47,19 @@ jobs:
         with:
           fail_ci_if_error: true
           verbose: true
+      # A test process that crashes, such as one in a simulator, fails
+      # the job without saying why in the log. The test results and the
+      # crash reports that macOS writes for the process explain it.
+      - name: Upload Test Results and Crash Reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: xcode-test-results-${{ matrix.platforms }}
+          path: |
+            .build/derivedData/*/Logs/Test/*.xcresult
+            ~/Library/Logs/DiagnosticReports/*.ips
+          if-no-files-found: ignore
+          retention-days: 7
   # Xcode 27 can't download the iOS 18 simulator runtime, but the
   # `macos-15` image has it installed, so this job copies its disk image
   # and passes it to `spm-minimum-ios` as an artifact.
@@ -104,6 +117,19 @@ jobs:
         with:
           fail_ci_if_error: true
           verbose: true
+      # A test process that crashes, such as one in a simulator, fails
+      # the job without saying why in the log. The test results and the
+      # crash reports that macOS writes for the process explain it.
+      - name: Upload Test Results and Crash Reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: xcode-test-results-iOS18
+          path: |
+            .build/derivedData/*/Logs/Test/*.xcresult
+            ~/Library/Logs/DiagnosticReports/*.ips
+          if-no-files-found: ignore
+          retention-days: 7
   spm-swift:
     name: Swift Build Xcode
     runs-on: xcode-27
@@ -119,6 +145,16 @@ jobs:
         run: sudo xcode-select --switch /Applications/Xcode_27.2.app/Contents/Developer
       - name: Build and Test Framework
         run: xcrun swift test -c release -Xswiftc -enable-testing
+      # A test process that crashes fails the job without saying why in
+      # the log. The crash report that macOS writes for it explains it.
+      - name: Upload Crash Reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: swift-build-xcode-crash-reports
+          path: ~/Library/Logs/DiagnosticReports/*.ips
+          if-no-files-found: ignore
+          retention-days: 7
   tsan:
     name: "Thread Sanitizer on macOS"
     runs-on: xcode-27
@@ -138,6 +174,16 @@ jobs:
       # with an error, which fails this step.
       - name: Test With Thread Sanitizer
         run: xcrun swift test --skip-build --sanitize=thread
+      # A test process that crashes fails the job without saying why in
+      # the log. The crash report that macOS writes for it explains it.
+      - name: Upload Crash Reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: thread-sanitizer-crash-reports
+          path: ~/Library/Logs/DiagnosticReports/*.ips
+          if-no-files-found: ignore
+          retention-days: 7
   linux:
     name: "Build and Test on Linux"
     runs-on: ubuntu-24.04
