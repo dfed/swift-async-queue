@@ -51,6 +51,11 @@ jobs:
     - if: matrix.language == 'swift'
       name: Select Xcode Version
       run: sudo xcode-select --switch /Applications/Xcode_27.2.app/Contents/Developer
+    # The CodeQL tracer spawns x86_64 helpers, and the `xcode-27` image ships without Rosetta,
+    # so without this step every process the build spawns fails with "Bad CPU type in executable".
+    - if: matrix.language == 'swift'
+      name: Install Rosetta
+      run: sudo softwareupdate --install-rosetta --agree-to-license
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
