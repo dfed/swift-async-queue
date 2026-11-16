@@ -52,7 +52,7 @@ struct TestHelpersTests {
 		executor.runUntilIdle()
 
 		task.escalatePriority(to: .high)
-		await runExecutor { reportedPriority.withLock(\.self) != nil }
+		await executor.runUntil { reportedPriority.withLock(\.self) != nil }
 		let priority = reportedPriority.withLock(\.self)
 		#expect(priority == .high)
 	}
@@ -75,7 +75,7 @@ struct TestHelpersTests {
 
 		// Escalate the task to the priority it waits for, so that it returns and the test can end.
 		task.escalatePriority(to: .high)
-		await runExecutor { reportedPriority.withLock(\.self) != nil }
+		await executor.runUntil { reportedPriority.withLock(\.self) != nil }
 		let priority = reportedPriority.withLock(\.self)
 		#expect(priority == .high)
 	}
@@ -83,18 +83,4 @@ struct TestHelpersTests {
 	// MARK: Private
 
 	private let executor = ManualTaskExecutor()
-
-	/// Runs the executor each time a job is enqueued on it, until `isDone` returns `true`.
-	///
-	/// The escalation handler signals from a new task on another executor, and the runtime may resume the waiting task
-	/// with more than one job on this executor, some of them enqueued after the executor last ran. Running the executor
-	/// after each job until the task reports keeps the test from missing any of them. If the task never reports, this
-	/// function suspends forever, so a regression hangs the test.
-	private func runExecutor(until isDone: () -> Bool) async {
-		var enqueuedJobs = executor.enqueuedJobs.makeAsyncIterator()
-		while !isDone() {
-			await enqueuedJobs.next()
-			executor.runUntilIdle()
-		}
-	}
 }

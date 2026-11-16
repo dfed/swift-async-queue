@@ -81,6 +81,20 @@ final class ManualTaskExecutor: TaskExecutor {
 		}
 	}
 
+	/// Runs the pending jobs each time a job is enqueued, until `isDone` returns `true`.
+	///
+	/// Another thread may enqueue a job for a task that prefers this executor at any time, and the task may need more than
+	/// one job to reach the point that the test waits for. Running the executor after each job is enqueued keeps the test
+	/// from missing any of them. `isDone` is checked after the executor runs, so it should become `true` while a job on this
+	/// executor runs. If it never does, this method suspends forever, so a regression hangs the test.
+	func runUntil(_ isDone: () -> Bool) async {
+		var enqueuedJobs = enqueuedJobs.makeAsyncIterator()
+		while !isDone() {
+			await enqueuedJobs.next()
+			runUntilIdle()
+		}
+	}
+
 	// MARK: Private
 
 	private struct EnqueuedJob {
