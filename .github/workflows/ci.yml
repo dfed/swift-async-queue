@@ -79,8 +79,35 @@ jobs:
         run: xcrun swift build --build-tests --sanitize=thread
       - name: Test With Thread Sanitizer
         run: xcrun swift test --skip-build --sanitize=thread
+  ios18-export-spike:
+    name: "Spike: export the iOS 18 runtime with Xcode 26"
+    runs-on: macos-15
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - name: Export the iOS 18.5 Simulator Runtime
+        run: |
+          set -x
+          ls -d /Applications/Xcode*.app
+          sudo xcode-select --switch /Applications/Xcode_26.1.1.app/Contents/Developer
+          sudo xcodebuild -runFirstLaunch
+          mkdir -p runtime
+          SECONDS=0
+          sudo xcodebuild -downloadPlatform iOS -buildVersion 22F77 -exportPath runtime
+          echo "Export took ${SECONDS}s"
+          sudo chown -R "$(whoami)" runtime
+          ls -la runtime
+      - name: Upload the Runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-18-5-runtime
+          path: runtime
+          compression-level: 0
+          retention-days: 1
   ios18-spike:
-    name: "Spike: iOS 18 simulator"
+    name: "Spike: test on the iOS 18 runtime with Xcode 27"
+    needs: ios18-export-spike
     runs-on: xcode-27
     timeout-minutes: 50
     permissions:
@@ -88,7 +115,12 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v7
-      - name: Install an iOS 18 Simulator and Test on It
+      - name: Download the Runtime
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-18-5-runtime
+          path: runtime
+      - name: Install the Runtime and Test on It
         run: Scripts/spike-old-simulator.sh
   linux:
     name: "Build and Test on Linux"
