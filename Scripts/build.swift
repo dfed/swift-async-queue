@@ -22,6 +22,9 @@ enum TaskError: Error {
 
 enum Platform: String, CaseIterable, CustomStringConvertible {
 	case iOS
+	/// The minimum iOS version. Scripts/install-ios-18-simulator.sh
+	/// installs its simulator runtime, which Xcode 27 can't download.
+	case iOS18
 	case tvOS
 	case macOS
 	case macCatalyst
@@ -32,6 +35,9 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
 		switch self {
 		case .iOS:
 			"platform=iOS Simulator,OS=27.2,name=iPad (A16)"
+
+		case .iOS18:
+			"platform=iOS Simulator,OS=18.5,name=iPad (10th generation)"
 
 		case .tvOS:
 			"platform=tvOS Simulator,OS=27.2,name=Apple TV 4K (4th generation)"
@@ -50,7 +56,8 @@ enum Platform: String, CaseIterable, CustomStringConvertible {
 
 	var sdk: String {
 		switch self {
-		case .iOS:
+		case .iOS,
+			 .iOS18:
 			"iphonesimulator"
 
 		case .tvOS:
