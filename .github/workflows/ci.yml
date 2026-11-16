@@ -94,8 +94,12 @@ jobs:
           sudo xcodebuild -runFirstLaunch
           mkdir -p runtime
           SECONDS=0
-          sudo xcodebuild -downloadPlatform iOS -buildVersion 22F77 -exportPath runtime
+          # The image already has this runtime installed, so this exports it
+          # without downloading. It can exit with an error after exporting
+          # ("Unable to connect to simulator."), so check for the image instead.
+          sudo xcodebuild -downloadPlatform iOS -buildVersion 22F77 -exportPath runtime || echo "xcodebuild exited with $?"
           echo "Export took ${SECONDS}s"
+          test -f runtime/iphonesimulator_18.5_22F77.dmg
           sudo chown -R "$(whoami)" runtime
           ls -la runtime
       - name: Upload the Runtime
