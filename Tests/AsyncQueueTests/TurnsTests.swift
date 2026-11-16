@@ -20,6 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import Dispatch
 import Synchronization
 import Testing
 
@@ -138,12 +139,11 @@ struct TurnsTests {
 		let systemUnderTest = Turns()
 		let executor = ManualTaskExecutor()
 		let firstTurn = systemUnderTest.reserve()
-		let holderAllowedToReport = Semaphore()
 		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
 		// Never await this task: awaiting it would escalate it without the turns' help.
 		let holder = Task(priority: .low) {
 			await firstTurn.begin()
-			await holderAllowedToReport.wait()
+			await suspendUntilEscalated(to: .high)
 			let priority = Task.currentPriority
 			// End the turn before reporting, so that the waiting tasks can take their turns once the priority arrives.
 			firstTurn.end()
@@ -161,9 +161,8 @@ struct TurnsTests {
 		}
 		// Run every waiting task until it waits for its turn, at its own priority.
 		executor.runUntilIdle()
-		// Escalating the last waiting task escalates the task holding the current turn before this call returns.
+		// Escalating the last waiting task escalates the task holding the current turn, from a new task.
 		waitingTasks[waitingTasks.count - 1].escalatePriority(to: .high)
-		await holderAllowedToReport.signal()
 		var prioritiesIterator = priorities.makeAsyncIterator()
 		let priority = await prioritiesIterator.next()
 		// Ending the holder's turn lets the waiting tasks take their turns, one after another, on the executor.
@@ -361,6 +360,7 @@ struct TurnsTests {
 			await firstTurn.begin()
 			// Hold the turn until the test has inspected the waiting task's record.
 			await waitingTaskInspected.wait()
+			await suspendUntilEscalated(to: .high)
 			let priority = Task.currentPriority
 			// End the turn before reporting, so that the waiting task can take its turn once the priority arrives.
 			firstTurn.end()
@@ -375,7 +375,8 @@ struct TurnsTests {
 		// Run the waiting task until it waits for its turn, recorded at its own priority.
 		executor.runUntilIdle()
 		// The task is already recorded as waiting, so only its escalation handler can deliver this escalation.
-		// The handler runs on this thread before `escalatePriority(to:)` returns.
+		// The handler records the escalation on this thread before `escalatePriority(to:)` returns, and escalates the
+		// task holding the current turn from a new task.
 		waitingTask.escalatePriority(to: .high)
 		#expect(systemUnderTest.waitingTaskCount == 1)
 		#expect(systemUnderTest.highestWaitingPriority == .high)
@@ -471,11 +472,74 @@ struct TurnsTests {
 		// Run the waiting task until it waits for its turn. Beginning to wait escalates the first task,
 		// which runs the first task's handler.
 		executor.runUntilIdle()
-		// Escalating the waiting task escalates the first task again, which runs the first task's handler again.
+		// Escalating the waiting task escalates the first task again, from a new task, which runs the first task's
+		// handler again.
 		waitingTask.escalatePriority(to: .high)
 		await firstTaskAllowedToReport.signal()
 		var prioritiesIterator = priorities.makeAsyncIterator()
 		let priority = await prioritiesIterator.next()
+		executor.runUntilIdle()
+		await waitingTask.value
+		#expect(priority.map { $0 >= .high } == true)
+	}
+
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
+	func begin_whenWaitingTaskIsEscalatedWhileTaskHoldingTurnRunsCancellationHandler_escalatesTaskHoldingTurnWithoutWaitingForHandler() async {
+		let systemUnderTest = Turns()
+		let executor = ManualTaskExecutor()
+		let firstTurn = systemUnderTest.reserve()
+		let secondTurn = systemUnderTest.reserve()
+		let (handlerInstalled, handlerInstalledContinuation) = AsyncStream<Void>.makeStream()
+		let (handlerRunning, handlerRunningContinuation) = AsyncStream<Void>.makeStream()
+		let waitingTaskEscalated = DispatchSemaphore(value: 0)
+		let firstTaskAllowedToContinue = Semaphore()
+		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+		// Never await this task: awaiting it would escalate it without the turns' help.
+		let firstTask = Task(priority: .low) {
+			await firstTurn.begin()
+			await withTaskCancellationHandler {
+				handlerInstalledContinuation.yield()
+				// Wait for the test rather than for cancellation, so that this task does not resume and wait for its own
+				// status lock while its cancellation handler runs.
+				await firstTaskAllowedToContinue.wait()
+			} onCancel: {
+				// The runtime holds this task's status lock while it runs this handler, and escalating this task takes
+				// that lock. Hold the lock until escalating the waiting task has returned.
+				handlerRunningContinuation.yield()
+				waitingTaskEscalated.wait()
+			}
+			await suspendUntilEscalated(to: .high)
+			let priority = Task.currentPriority
+			// End the turn before reporting, so that the waiting task can take its turn once the priority arrives.
+			firstTurn.end()
+			prioritiesContinuation.yield(priority)
+		}
+		firstTurn.register(firstTask)
+		let waitingTask = Task(executorPreference: executor, priority: .low) {
+			await secondTurn.begin()
+			secondTurn.end()
+		}
+		secondTurn.register(waitingTask)
+		// Run the waiting task until it waits for its turn, recorded at its own priority.
+		executor.runUntilIdle()
+		var handlerInstalledIterator = handlerInstalled.makeAsyncIterator()
+		await handlerInstalledIterator.next()
+		// Cancel the first task on a thread of its own, since its cancellation handler blocks that thread.
+		DispatchQueue(label: "cancelFirstTask").async {
+			firstTask.cancel()
+		}
+		var handlerRunningIterator = handlerRunning.makeAsyncIterator()
+		await handlerRunningIterator.next()
+		// Only the waiting task's escalation handler can deliver this escalation. If the handler escalated the first task
+		// before returning, it would wait for the first task's status lock, which the first task's cancellation handler
+		// holds until this call returns, and this test would never finish.
+		waitingTask.escalatePriority(to: .high)
+		waitingTaskEscalated.signal()
+		await firstTaskAllowedToContinue.signal()
+		var prioritiesIterator = priorities.makeAsyncIterator()
+		let priority = await prioritiesIterator.next()
+		// Ending the first turn lets the waiting task take its turn, on the executor.
 		executor.runUntilIdle()
 		await waitingTask.value
 		#expect(priority.map { $0 >= .high } == true)
@@ -636,7 +700,8 @@ struct TurnsTests {
 	///   - turn: The turn that the task takes.
 	///   - handlerInstalled: Receives a value once the task's escalation handler is installed.
 	///   - allowedToReport: Signaled by the test once it has escalated the task.
-	///   - priorities: Receives the task's priority once `allowedToReport` is signaled and the task has ended its turn.
+	///   - priorities: Receives the task's priority once `allowedToReport` is signaled, the task has been escalated to
+	///     `.high` or higher, and the task has ended its turn.
 	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
 	private func taskWithEscalationHandler(
 		using turns: Turns,
@@ -651,6 +716,7 @@ struct TurnsTests {
 			let priority = await withTaskPriorityEscalationHandler {
 				handlerInstalled.yield()
 				await allowedToReport.wait()
+				await suspendUntilEscalated(to: .high)
 				return Task.currentPriority
 			} onPriorityEscalated: { _, _ in
 				// The turns must not hold their lock while escalating a task, or this deadlocks.

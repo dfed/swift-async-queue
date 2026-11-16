@@ -20,6 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import Dispatch
 import Testing
 
 @testable import AsyncQueue
@@ -697,6 +698,66 @@ struct CancellableQueueTests {
 		systemUnderTest.cancelTasks()
 
 		#expect(!task.isCancelled)
+	}
+
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
+	func cancelTasks_fifoQueue_whileTaskWaitingForItsTurnIsEscalated_escalatesTaskHoldingTurnWithoutWaitingForCancellationHandler() async {
+		let fifoQueue = FIFOQueue()
+		let systemUnderTest = CancellableQueue(underlyingQueue: fifoQueue)
+		let (handlerInstalled, handlerInstalledContinuation) = AsyncStream<Void>.makeStream()
+		let (handlerRunning, handlerRunningContinuation) = AsyncStream<Void>.makeStream()
+		let waitingTaskEscalated = DispatchSemaphore(value: 0)
+		let firstTaskAllowedToContinue = Semaphore()
+		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+		// Never await this task: awaiting it would escalate it without the queue's help.
+		Task(priority: .low, on: systemUnderTest) {
+			await withTaskCancellationHandler {
+				handlerInstalledContinuation.yield()
+				// Wait for the test rather than for cancellation, so that this task does not resume and wait for its own
+				// status lock while its cancellation handler runs.
+				await firstTaskAllowedToContinue.wait()
+			} onCancel: {
+				// The runtime holds this task's status lock while it runs this handler, and escalating this task takes
+				// that lock. Hold the lock until escalating the waiting task has returned.
+				handlerRunningContinuation.yield()
+				waitingTaskEscalated.wait()
+			}
+			await suspendUntilEscalated(to: .high)
+			prioritiesContinuation.yield(Task.currentPriority)
+		}
+		var handlerInstalledIterator = handlerInstalled.makeAsyncIterator()
+		await handlerInstalledIterator.next()
+		// Reserve the next turn for a task that runs only when this test runs it, and run it until it waits for its turn.
+		let executor = ManualTaskExecutor()
+		let turn = fifoQueue.turns.reserve()
+		let waitingTask = Task(executorPreference: executor, priority: .low) {
+			await turn.begin()
+			turn.end()
+		}
+		turn.register(waitingTask)
+		executor.runUntilIdle()
+		// Cancel the queue's tasks on a thread of their own, since the first task's cancellation handler blocks that thread.
+		DispatchQueue(label: "cancelTasks").async {
+			systemUnderTest.cancelTasks()
+		}
+		var handlerRunningIterator = handlerRunning.makeAsyncIterator()
+		await handlerRunningIterator.next()
+		// Only the waiting task's escalation handler can deliver this escalation. If the handler escalated the first task
+		// before returning, it would wait for the first task's status lock, which the first task's cancellation handler
+		// holds until this call returns, and this test would never finish.
+		waitingTask.escalatePriority(to: .high)
+		waitingTaskEscalated.signal()
+		await firstTaskAllowedToContinue.signal()
+		var prioritiesIterator = priorities.makeAsyncIterator()
+		let priority = await prioritiesIterator.next()
+		// Skip the job that started the waiting task, and wait for the job that resumes it once the first task's turn ends.
+		var enqueuedJobs = executor.enqueuedJobs.makeAsyncIterator()
+		await enqueuedJobs.next()
+		await enqueuedJobs.next()
+		executor.runUntilIdle()
+		await waitingTask.value
+		#expect(priority.map { $0 >= .high } == true)
 	}
 
 	@Test
