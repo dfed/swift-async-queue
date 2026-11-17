@@ -43,12 +43,22 @@ public final class CancellableQueue<UnderlyingQueue: Sendable>: Sendable {
 
 	/// Cancels currently executing and pending tasks. Does not affect tasks enqueued after this method is called.
 	///
+	/// A task that another thread is still enqueuing when this method is called is cancelled as soon as its enqueuing completes.
+	///
 	/// If another call to this method is in progress, this call may return before the other call finishes cancelling the tasks it found.
 	public func cancelTasks() {
-		let cancellations = taskIdentifierToCancelMap.withLock {
-			let cancellations = $0.values.compactMap(\.self)
-			// Keep reservations so that tasks that have not yet registered remain cancellable.
-			$0 = $0.filter { $0.value == nil }
+		let cancellations = taskIdentifierToState.withLock { taskIdentifierToState in
+			var cancellations = [@Sendable () -> Void]()
+			taskIdentifierToState = taskIdentifierToState.compactMapValues { state in
+				switch state {
+				case let .registered(cancel):
+					cancellations.append(cancel)
+					return nil
+				case .reserved, .cancellationRequested:
+					// The task has not registered its `cancel` closure yet, so cancel it once it does.
+					return .cancellationRequested
+				}
+			}
 			return cancellations
 		}
 		// Cancelling a task synchronously runs its cancellation handlers, which may call back into this queue.
@@ -64,35 +74,74 @@ public final class CancellableQueue<UnderlyingQueue: Sendable>: Sendable {
 	/// Reserving before the task starts ensures the task's removal of the identifier can never be processed before the reservation.
 	func reserveTaskIdentifier() -> UUID {
 		let identifier = UUID()
-		taskIdentifierToCancelMap.withLock {
-			_ = $0.updateValue(nil, forKey: identifier)
+		taskIdentifierToState.withLock {
+			$0[identifier] = .reserved
 		}
 		return identifier
 	}
 
 	/// Registers the `cancel` closure for a task whose identifier was previously reserved.
+	/// Cancels the task if `cancelTasks()` was called after the identifier was reserved.
 	func registerCancellation(forTaskWithIdentifier identifier: UUID, _ cancel: @escaping @Sendable () -> Void) {
-		taskIdentifierToCancelMap.withLock {
-			// Skip registration if the identifier was already removed because the task already finished.
-			if $0.keys.contains(identifier) {
-				$0[identifier] = cancel
+		let isCancellationRequested = taskIdentifierToState.withLock { taskIdentifierToState in
+			switch taskIdentifierToState[identifier] {
+			case .reserved:
+				taskIdentifierToState[identifier] = .registered(cancel)
+				return false
+			case .cancellationRequested:
+				taskIdentifierToState[identifier] = nil
+				return true
+			case .registered, nil:
+				// The task already finished, so there is nothing to cancel.
+				return false
 			}
+		}
+		if isCancellationRequested {
+			// Cancel only after releasing the lock. See `cancelTasks()`.
+			cancel()
 		}
 	}
 
 	/// Removes the identifier of a task that has finished executing.
 	func taskDidFinish(withIdentifier identifier: UUID) {
-		taskIdentifierToCancelMap.withLock {
+		taskIdentifierToState.withLock {
 			$0[identifier] = nil
 		}
+	}
+
+	/// Tracks the task that `createTask` creates to perform `operation`, so that `cancelTasks()` can cancel it.
+	/// Reserves the task's identifier before the task is created and registers its `cancel` closure afterward,
+	/// so that the task may finish, or `cancelTasks()` may be called, while it is being created.
+	///
+	/// Always inlined: without `@inline(__always)`, the generic call is not inlined, and enqueuing a task on a
+	/// `CancellableQueue` measured about 11% slower.
+	@inline(__always)
+	func trackTask<Operation, Success, Failure>(
+		performing operation: sending Operation,
+		createdBy createTask: (_ identifier: UUID, _ operation: sending Operation) -> Task<Success, Failure>,
+	) -> Task<Success, Failure> {
+		let identifier = reserveTaskIdentifier()
+		let task = createTask(identifier, operation)
+		registerCancellation(forTaskWithIdentifier: identifier, task.cancel)
+		return task
 	}
 
 	// MARK: Fileprivate
 
 	fileprivate let underlyingQueue: UnderlyingQueue
 
+	/// The state of each enqueued task that has not finished executing.
 	/// Never cancel a task while holding this lock: cancellation handlers run synchronously and may call back into this queue.
-	fileprivate let taskIdentifierToCancelMap = Mutex<[UUID: (@Sendable () -> Void)?]>([:])
+	fileprivate let taskIdentifierToState = Mutex<[UUID: TaskState]>([:])
+
+	fileprivate enum TaskState: Sendable {
+		/// The task is being enqueued, and has not registered its `cancel` closure yet.
+		case reserved
+		/// `cancelTasks()` was called before the task registered its `cancel` closure, so the task is cancelled when it registers.
+		case cancellationRequested
+		/// The task registered its `cancel` closure.
+		case registered(@Sendable () -> Void)
+	}
 }
 
 extension Task {
@@ -124,14 +173,14 @@ extension Task {
 		on actorQueue: CancellableQueue<ActorQueue<ActorType>>,
 		operation: @Sendable @escaping (isolated ActorType) async -> Success,
 	) where Failure == Never {
-		let identifier = actorQueue.reserveTaskIdentifier()
-		self.init(name: name, priority: priority, on: actorQueue.underlyingQueue, operation: {
-			defer {
-				actorQueue.taskDidFinish(withIdentifier: identifier)
-			}
-			return await operation($0)
-		})
-		actorQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
+		self = actorQueue.trackTask(performing: operation) { identifier, operation in
+			Task(name: name, priority: priority, on: actorQueue.underlyingQueue, operation: {
+				defer {
+					actorQueue.taskDidFinish(withIdentifier: identifier)
+				}
+				return await operation($0)
+			})
+		}
 	}
 
 	/// Runs the given throwing operation asynchronously
@@ -162,14 +211,14 @@ extension Task {
 		on actorQueue: CancellableQueue<ActorQueue<ActorType>>,
 		operation: @escaping @Sendable (isolated ActorType) async throws -> Success,
 	) where Failure == any Error {
-		let identifier = actorQueue.reserveTaskIdentifier()
-		self.init(name: name, priority: priority, on: actorQueue.underlyingQueue, operation: {
-			defer {
-				actorQueue.taskDidFinish(withIdentifier: identifier)
-			}
-			return try await operation($0)
-		})
-		actorQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
+		self = actorQueue.trackTask(performing: operation) { identifier, operation in
+			Task(name: name, priority: priority, on: actorQueue.underlyingQueue, operation: {
+				defer {
+					actorQueue.taskDidFinish(withIdentifier: identifier)
+				}
+				return try await operation($0)
+			})
+		}
 	}
 
 	/// Runs the given nonthrowing operation asynchronously
@@ -200,14 +249,14 @@ extension Task {
 		on actorQueue: CancellableQueue<ActorQueue<MainActor>>,
 		operation: @MainActor @escaping () async -> Success,
 	) where Failure == Never {
-		let identifier = actorQueue.reserveTaskIdentifier()
-		self.init(name: name, priority: priority, on: actorQueue.underlyingQueue, operation: {
-			defer {
-				actorQueue.taskDidFinish(withIdentifier: identifier)
-			}
-			return await operation()
-		})
-		actorQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
+		self = actorQueue.trackTask(performing: operation) { identifier, operation in
+			Task(name: name, priority: priority, on: actorQueue.underlyingQueue, operation: {
+				defer {
+					actorQueue.taskDidFinish(withIdentifier: identifier)
+				}
+				return await operation()
+			})
+		}
 	}
 
 	/// Runs the given throwing operation asynchronously
@@ -238,14 +287,14 @@ extension Task {
 		on actorQueue: CancellableQueue<ActorQueue<MainActor>>,
 		operation: @escaping @MainActor () async throws -> Success,
 	) where Failure == any Error {
-		let identifier = actorQueue.reserveTaskIdentifier()
-		self.init(name: name, priority: priority, on: actorQueue.underlyingQueue, operation: {
-			defer {
-				actorQueue.taskDidFinish(withIdentifier: identifier)
-			}
-			return try await operation()
-		})
-		actorQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
+		self = actorQueue.trackTask(performing: operation) { identifier, operation in
+			Task(name: name, priority: priority, on: actorQueue.underlyingQueue, operation: {
+				defer {
+					actorQueue.taskDidFinish(withIdentifier: identifier)
+				}
+				return try await operation()
+			})
+		}
 	}
 
 	/// Runs the given nonthrowing operation asynchronously
@@ -273,14 +322,14 @@ extension Task {
 		on fifoQueue: CancellableQueue<FIFOQueue>,
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async -> Success,
 	) where Failure == Never {
-		let identifier = fifoQueue.reserveTaskIdentifier()
-		self.init(name: name, on: fifoQueue.underlyingQueue, operation: {
-			defer {
-				fifoQueue.taskDidFinish(withIdentifier: identifier)
-			}
-			return await operation()
-		})
-		fifoQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
+		self = fifoQueue.trackTask(performing: operation) { identifier, operation in
+			Task(name: name, on: fifoQueue.underlyingQueue, operation: {
+				defer {
+					fifoQueue.taskDidFinish(withIdentifier: identifier)
+				}
+				return await operation()
+			})
+		}
 	}
 
 	/// Runs the given throwing operation asynchronously
@@ -308,14 +357,14 @@ extension Task {
 		on fifoQueue: CancellableQueue<FIFOQueue>,
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async throws -> Success,
 	) where Failure == any Error {
-		let identifier = fifoQueue.reserveTaskIdentifier()
-		self.init(name: name, on: fifoQueue.underlyingQueue, operation: {
-			defer {
-				fifoQueue.taskDidFinish(withIdentifier: identifier)
-			}
-			return try await operation()
-		})
-		fifoQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
+		self = fifoQueue.trackTask(performing: operation) { identifier, operation in
+			Task(name: name, on: fifoQueue.underlyingQueue, operation: {
+				defer {
+					fifoQueue.taskDidFinish(withIdentifier: identifier)
+				}
+				return try await operation()
+			})
+		}
 	}
 
 	/// Runs the given nonthrowing operation asynchronously
@@ -348,14 +397,14 @@ extension Task {
 		isolatedTo isolatedActor: ActorType,
 		operation: @Sendable @escaping (isolated ActorType) async -> Success,
 	) where Failure == Never {
-		let identifier = fifoQueue.reserveTaskIdentifier()
-		self.init(name: name, priority: priority, on: fifoQueue.underlyingQueue, isolatedTo: isolatedActor, operation: {
-			defer {
-				fifoQueue.taskDidFinish(withIdentifier: identifier)
-			}
-			return await operation($0)
-		})
-		fifoQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
+		self = fifoQueue.trackTask(performing: operation) { identifier, operation in
+			Task(name: name, priority: priority, on: fifoQueue.underlyingQueue, isolatedTo: isolatedActor, operation: {
+				defer {
+					fifoQueue.taskDidFinish(withIdentifier: identifier)
+				}
+				return await operation($0)
+			})
+		}
 	}
 
 	/// Runs the given throwing operation asynchronously
@@ -388,13 +437,13 @@ extension Task {
 		isolatedTo isolatedActor: ActorType,
 		operation: @Sendable @escaping (isolated ActorType) async throws -> Success,
 	) where Failure == any Error {
-		let identifier = fifoQueue.reserveTaskIdentifier()
-		self.init(name: name, priority: priority, on: fifoQueue.underlyingQueue, isolatedTo: isolatedActor, operation: {
-			defer {
-				fifoQueue.taskDidFinish(withIdentifier: identifier)
-			}
-			return try await operation($0)
-		})
-		fifoQueue.registerCancellation(forTaskWithIdentifier: identifier, cancel)
+		self = fifoQueue.trackTask(performing: operation) { identifier, operation in
+			Task(name: name, priority: priority, on: fifoQueue.underlyingQueue, isolatedTo: isolatedActor, operation: {
+				defer {
+					fifoQueue.taskDidFinish(withIdentifier: identifier)
+				}
+				return try await operation($0)
+			})
+		}
 	}
 }
