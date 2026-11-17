@@ -71,13 +71,12 @@ final class ManualTaskExecutor: TaskExecutor {
 
 	/// Runs every pending job, and every job those jobs enqueue on this executor, until none is pending.
 	///
-	/// The jobs run synchronously, one call at a time. `DispatchQueue.sync` runs them on the calling thread, so a job run
-	/// from a test's task runs nested inside that task, which the runtime makes current again once the job returns.
+	/// The jobs run synchronously on the calling thread, so a job run from a test's task runs nested inside that task,
+	/// which the runtime makes current again once the job returns. Call this function from one task at a time, and never
+	/// from a job that this executor runs.
 	func runUntilIdle() {
-		dispatchQueue.sync {
-			while let job = state.withLock({ $0.pendingJobs.isEmpty ? nil : $0.pendingJobs.removeFirst() }) {
-				job.runSynchronously(on: asUnownedTaskExecutor())
-			}
+		while let job = state.withLock({ $0.pendingJobs.isEmpty ? nil : $0.pendingJobs.removeFirst() }) {
+			job.runSynchronously(on: asUnownedTaskExecutor())
 		}
 	}
 
@@ -117,7 +116,6 @@ final class ManualTaskExecutor: TaskExecutor {
 
 	private let enqueuedJobsContinuation: AsyncStream<Void>.Continuation
 	private let state = Mutex(State())
-	private let dispatchQueue = DispatchQueue(label: "ManualTaskExecutor")
 }
 
 /// A serial executor that runs its jobs only when a test calls `runUntilIdle()`.
@@ -149,13 +147,12 @@ final class ManualSerialExecutor: SerialExecutor {
 
 	/// Runs every pending job, and every job those jobs enqueue on this executor, until none is pending.
 	///
-	/// The jobs run synchronously, one call at a time. `DispatchQueue.sync` runs them on the calling thread, so a job run
-	/// from a test's task runs nested inside that task, which the runtime makes current again once the job returns.
+	/// The jobs run synchronously on the calling thread, so a job run from a test's task runs nested inside that task,
+	/// which the runtime makes current again once the job returns. Call this function from one task at a time, and never
+	/// from a job that this executor runs.
 	func runUntilIdle() {
-		dispatchQueue.sync {
-			while let job = pendingJobs.withLock({ $0.isEmpty ? nil : $0.removeFirst() }) {
-				job.runSynchronously(on: asUnownedSerialExecutor())
-			}
+		while let job = pendingJobs.withLock({ $0.isEmpty ? nil : $0.removeFirst() }) {
+			job.runSynchronously(on: asUnownedSerialExecutor())
 		}
 	}
 
@@ -163,7 +160,6 @@ final class ManualSerialExecutor: SerialExecutor {
 
 	private let enqueuedJobsContinuation: AsyncStream<Void>.Continuation
 	private let pendingJobs = Mutex<[UnownedJob]>([])
-	private let dispatchQueue = DispatchQueue(label: "ManualSerialExecutor")
 }
 
 /// Reserves the next turn of `turns` for a probe task that runs only when a test runs it.

@@ -47,6 +47,89 @@ jobs:
         with:
           fail_ci_if_error: true
           verbose: true
+      # A test process that crashes, such as one in a simulator, fails
+      # the job without saying why in the log. The test results and the
+      # crash reports that macOS writes for the process explain it.
+      - name: Upload Test Results and Crash Reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: xcode-test-results-${{ matrix.platforms }}
+          path: |
+            .build/derivedData/*/Logs/Test/*.xcresult
+            ~/Library/Logs/DiagnosticReports/*.ips
+          if-no-files-found: ignore
+          retention-days: 7
+  # Xcode 27 can't download the iOS 18 simulator runtime, but the
+  # `macos-15` image has it installed, so this job copies its disk image
+  # and passes it to `spm-minimum-ios` as an artifact.
+  minimum-ios-runtime:
+    name: Copy Minimum iOS Simulator
+    runs-on: macos-15
+    # Copying and uploading the 9 GB disk image takes a few minutes, so
+    # stop a stalled upload after 15 minutes rather than at GitHub's
+    # six-hour default.
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v7
+      - name: Copy the Simulator Runtime
+        run: Scripts/copy-ios-18-simulator.sh runtime
+      - name: Upload the Simulator Runtime
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-18-simulator-runtime
+          path: runtime
+          # Skip compressing the 9 GB disk image, which only slows the upload.
+          compression-level: 0
+          # Only `spm-minimum-ios` needs the image, minutes later.
+          retention-days: 1
+  spm-minimum-ios:
+    name: Build Xcode Minimum iOS
+    needs: minimum-ios-runtime
+    runs-on: xcode-27
+    # A test that deadlocks keeps the test run from ending, so stop the
+    # job after 50 minutes rather than at GitHub's six-hour default.
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v7
+      - name: Select Xcode Version
+        run: sudo xcode-select --switch /Applications/Xcode_27.2.app/Contents/Developer
+      - name: Download the Simulator Runtime
+        uses: actions/download-artifact@v8
+        with:
+          name: ios-18-simulator-runtime
+          path: runtime
+      - name: Install the Simulator Runtime
+        run: Scripts/install-ios-18-simulator.sh runtime/iphonesimulator_18.5_22F77.dmg
+      - name: Build and Test Framework
+        run: Scripts/build.swift iOS18
+      - name: Prepare Coverage Reports
+        run: ./Scripts/prepare-coverage-reports.sh
+      - name: Upload Coverage Reports
+        if: success()
+        uses: codecov/codecov-action@v7
+        with:
+          fail_ci_if_error: true
+          verbose: true
+      # A test process that crashes, such as one in a simulator, fails
+      # the job without saying why in the log. The test results and the
+      # crash reports that macOS writes for the process explain it.
+      - name: Upload Test Results and Crash Reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: xcode-test-results-iOS18
+          path: |
+            .build/derivedData/*/Logs/Test/*.xcresult
+            ~/Library/Logs/DiagnosticReports/*.ips
+          if-no-files-found: ignore
+          retention-days: 7
   spm-swift:
     name: Swift Build Xcode
     runs-on: xcode-27
@@ -62,6 +145,45 @@ jobs:
         run: sudo xcode-select --switch /Applications/Xcode_27.2.app/Contents/Developer
       - name: Build and Test Framework
         run: xcrun swift test -c release -Xswiftc -enable-testing
+      # A test process that crashes fails the job without saying why in
+      # the log. The crash report that macOS writes for it explains it.
+      - name: Upload Crash Reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: swift-build-xcode-crash-reports
+          path: ~/Library/Logs/DiagnosticReports/*.ips
+          if-no-files-found: ignore
+          retention-days: 7
+  tsan:
+    name: "Thread Sanitizer on macOS"
+    runs-on: xcode-27
+    # A test that deadlocks keeps the test run from ending, so stop the
+    # job after 15 minutes rather than at GitHub's six-hour default.
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v7
+      - name: Select Xcode Version
+        run: sudo xcode-select --switch /Applications/Xcode_27.2.app/Contents/Developer
+      - name: Build With Thread Sanitizer
+        run: xcrun swift build --build-tests --sanitize=thread
+      # When Thread Sanitizer reports a data race, the test process exits
+      # with an error, which fails this step.
+      - name: Test With Thread Sanitizer
+        run: xcrun swift test --skip-build --sanitize=thread
+      # A test process that crashes fails the job without saying why in
+      # the log. The crash report that macOS writes for it explains it.
+      - name: Upload Crash Reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: thread-sanitizer-crash-reports
+          path: ~/Library/Logs/DiagnosticReports/*.ips
+          if-no-files-found: ignore
+          retention-days: 7
   linux:
     name: "Build and Test on Linux"
     runs-on: ubuntu-24.04
