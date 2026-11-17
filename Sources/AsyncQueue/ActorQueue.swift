@@ -252,9 +252,20 @@ extension Task {
 		operation: @MainActor @escaping () async -> Success,
 	) where Failure == Never {
 		let turn = actorQueue.turns.reserve()
-		self.init(name: name, priority: actorQueue.minimumPriority.priority(forTaskEnqueuedWith: priority)) {
-			await turn.begin()
-			return await executeOnMainActor(operation, endingTurn: turn)
+		let taskPriority = actorQueue.minimumPriority.priority(forTaskEnqueuedWith: priority)
+		if turn.wasCurrentWhenReserved {
+			// The task's turn begins without waiting, so start the task on the main actor rather than hop there.
+			self.init(name: name, priority: taskPriority) { @MainActor in
+				await turn.begin()
+				return await executeOnMainActor(operation, endingTurn: turn)
+			}
+		} else {
+			// A task that waits for its turn resumes on the global concurrent executor whichever executor it waits on,
+			// so wait there rather than take an extra turn on the main actor.
+			self.init(name: name, priority: taskPriority) {
+				await turn.begin()
+				return await executeOnMainActor(operation, endingTurn: turn)
+			}
 		}
 		turn.register(self)
 	}
@@ -297,9 +308,20 @@ extension Task {
 		operation: @escaping @MainActor () async throws -> Success,
 	) where Failure == any Error {
 		let turn = actorQueue.turns.reserve()
-		self.init(name: name, priority: actorQueue.minimumPriority.priority(forTaskEnqueuedWith: priority)) {
-			await turn.begin()
-			return try await executeOnMainActor(operation, endingTurn: turn)
+		let taskPriority = actorQueue.minimumPriority.priority(forTaskEnqueuedWith: priority)
+		if turn.wasCurrentWhenReserved {
+			// The task's turn begins without waiting, so start the task on the main actor rather than hop there.
+			self.init(name: name, priority: taskPriority) { @MainActor in
+				await turn.begin()
+				return try await executeOnMainActor(operation, endingTurn: turn)
+			}
+		} else {
+			// A task that waits for its turn resumes on the global concurrent executor whichever executor it waits on,
+			// so wait there rather than take an extra turn on the main actor.
+			self.init(name: name, priority: taskPriority) {
+				await turn.begin()
+				return try await executeOnMainActor(operation, endingTurn: turn)
+			}
 		}
 		turn.register(self)
 	}

@@ -21,6 +21,7 @@
 // SOFTWARE.
 
 import Dispatch
+import Foundation
 import Synchronization
 import Testing
 
@@ -812,6 +813,76 @@ struct CancellableQueueTests {
 		}
 		#expect(values == Array(repeating: "caller", count: 8))
 	}
+
+	@MainActor
+	@Test
+	func task_fifoQueue_withMainActorOperation_startsOnMainActorWithoutHoppingThere() async {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let executionOrder = Mutex([String]())
+		// The test holds the main actor, so neither task runs until the test suspends.
+		// A task that starts on the main actor runs before a main actor task created after it.
+		// A task that started elsewhere and then hopped to the main actor would run after that task.
+		let queuedTask = Task(on: systemUnderTest) {
+			executionOrder.withLock { $0.append("queued") }
+		}
+		let laterTask = Task { @MainActor in
+			executionOrder.withLock { $0.append("later") }
+		}
+		await queuedTask.value
+		await laterTask.value
+		#expect(executionOrder.withLock(\.self) == ["queued", "later"])
+	}
+
+	@MainActor
+	@Test
+	func throwingTask_fifoQueue_withMainActorOperation_startsOnMainActorWithoutHoppingThere() async throws {
+		let systemUnderTest = CancellableQueue(underlyingQueue: FIFOQueue())
+		let executionOrder = Mutex([String]())
+		// The test holds the main actor, so neither task runs until the test suspends.
+		// A task that starts on the main actor runs before a main actor task created after it.
+		// A task that started elsewhere and then hopped to the main actor would run after that task.
+		let queuedTask = Task(on: systemUnderTest) {
+			executionOrder.withLock { $0.append("queued") }
+			try doWork()
+		}
+		let laterTask = Task { @MainActor in
+			executionOrder.withLock { $0.append("later") }
+		}
+		try await queuedTask.value
+		await laterTask.value
+		#expect(executionOrder.withLock(\.self) == ["queued", "later"])
+	}
+
+	#if DEBUG
+		@Test
+		func task_fifoQueue_withMainActorOperation_endsItsTurnOnMainActor() async {
+			let wasEachTurnEndedOnMainThread = Mutex([Bool]())
+			let turns = Turns(didEndTurn: {
+				wasEachTurnEndedOnMainThread.withLock { $0.append(Thread.isMainThread) }
+			})
+			let task = Task(on: CancellableQueue(underlyingQueue: FIFOQueue(turns: turns))) { @MainActor in
+				MainActor.assertIsolated()
+			}
+			await task.value
+			// A task that hopped off of the main actor before ending its turn would end it on another thread.
+			#expect(wasEachTurnEndedOnMainThread.withLock(\.self) == [true])
+		}
+
+		@Test
+		func throwingTask_fifoQueue_withMainActorOperation_endsItsTurnOnMainActor() async throws {
+			let wasEachTurnEndedOnMainThread = Mutex([Bool]())
+			let turns = Turns(didEndTurn: {
+				wasEachTurnEndedOnMainThread.withLock { $0.append(Thread.isMainThread) }
+			})
+			let task = Task(on: CancellableQueue(underlyingQueue: FIFOQueue(turns: turns))) { @MainActor in
+				MainActor.assertIsolated()
+				try doWork()
+			}
+			try await task.value
+			// A task that hopped off of the main actor before ending its turn would end it on another thread.
+			#expect(wasEachTurnEndedOnMainThread.withLock(\.self) == [true])
+		}
+	#endif
 
 	// MARK: Private
 

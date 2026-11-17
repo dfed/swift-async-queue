@@ -750,6 +750,48 @@ struct TurnsTests {
 		#expect(systemUnderTest.isIdle)
 	}
 
+	@Test
+	func reserve_whenEveryEarlierTurnHasEnded_reservesTurnThatWasCurrentWhenReserved() async {
+		let systemUnderTest = Turns()
+		let firstTurn = systemUnderTest.reserve()
+		await firstTurn.begin()
+		firstTurn.end()
+		let secondTurn = systemUnderTest.reserve()
+		#expect(firstTurn.wasCurrentWhenReserved)
+		#expect(secondTurn.wasCurrentWhenReserved)
+	}
+
+	@Test
+	func reserve_whileEarlierTurnHasNotEnded_reservesTurnThatWasNotCurrentWhenReserved() async {
+		let systemUnderTest = Turns()
+		let firstTurn = systemUnderTest.reserve()
+		let secondTurn = systemUnderTest.reserve()
+		await firstTurn.begin()
+		firstTurn.end()
+		await secondTurn.begin()
+		secondTurn.end()
+		#expect(!secondTurn.wasCurrentWhenReserved)
+	}
+
+	@MainActor
+	@Test
+	func begin_onMainActor_whenTurnWasCurrentWhenReserved_doesNotSuspend() async {
+		let systemUnderTest = Turns()
+		let turn = systemUnderTest.reserve()
+		let didOtherMainActorTaskRun = Mutex(false)
+		// This task can run only once the test suspends or returns, since the test holds the main actor.
+		let otherMainActorTask = Task { @MainActor in
+			didOtherMainActorTaskRun.withLock { $0 = true }
+		}
+		// Beginning a current turn runs on the caller's actor and returns without suspending,
+		// so it neither hops off of the main actor nor lets another main actor task run.
+		await turn.begin()
+		let didOtherMainActorTaskRunDuringBegin = didOtherMainActorTaskRun.withLock(\.self)
+		turn.end()
+		await otherMainActorTask.value
+		#expect(!didOtherMainActorTaskRunDuringBegin)
+	}
+
 	// MARK: Private
 
 	/// Creates a task that takes `turn` and, once its turn begins, installs an escalation handler that uses `turns`,

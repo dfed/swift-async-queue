@@ -38,25 +38,41 @@ final class Turns: Sendable {
 	///   Tests pass `false` to exercise the behavior of runtimes that cannot escalate another task.
 	init(escalatesPriority: Bool = true) {
 		self.escalatesPriority = escalatesPriority
+		#if DEBUG
+			didEndTurn = nil
+		#endif
 	}
+
+	#if DEBUG
+		/// Creates turns that call `didEndTurn` each time a turn ends, from the code that ends it.
+		///
+		/// Tests use this to check where a queue's task ends its turn. This initializer exists only in debug builds,
+		/// so release builds pay nothing for it.
+		/// - Parameter didEndTurn: Called each time a turn ends, after the turn has ended.
+		init(didEndTurn: @escaping @Sendable () -> Void) {
+			escalatesPriority = true
+			self.didEndTurn = didEndTurn
+		}
+	#endif
 
 	// MARK: Internal
 
 	/// Reserves the next turn.
 	func reserve() -> Turn {
 		let ticket = Ticket()
-		let previousTicket = state.withLock { state in
+		let (previousTicket, isCurrent) = state.withLock { state -> (Ticket?, Bool) in
 			defer { state.lastTicket = ticket }
 			if let lastTicket = state.lastTicket, !lastTicket.hasEnded {
 				lastTicket.next = ticket
+				return (lastTicket, false)
 			} else {
 				// Every earlier turn has ended, so this turn is the current turn.
 				state.holder = ticket
 				state.holderPriority = nil
+				return (state.lastTicket, true)
 			}
-			return state.lastTicket
 		}
-		return Turn(turns: self, previousTicket: previousTicket, ticket: ticket)
+		return Turn(turns: self, previousTicket: previousTicket, ticket: ticket, wasCurrentWhenReserved: isCurrent)
 	}
 
 	/// Whether every turn reserved so far has ended.
@@ -107,6 +123,10 @@ final class Turns: Sendable {
 
 	fileprivate let escalatesPriority: Bool
 
+	#if DEBUG
+		private let didEndTurn: (@Sendable () -> Void)?
+	#endif
+
 	fileprivate func register(
 		escalation escalate: @escaping @Sendable (TaskPriority) -> Void,
 		for ticket: Ticket,
@@ -125,7 +145,7 @@ final class Turns: Sendable {
 		}
 	}
 
-	fileprivate func begin(_ ticket: Ticket, after previousTicket: Ticket?) async {
+	nonisolated(nonsending) fileprivate func begin(_ ticket: Ticket, after previousTicket: Ticket?) async {
 		if let previousTicket {
 			if escalatesPriority, #available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *) {
 				await withTaskPriorityEscalationHandler {
@@ -167,6 +187,9 @@ final class Turns: Sendable {
 		// Escalating before resuming means the next task is scheduled at its escalated priority.
 		escalateNextHolder?()
 		successor?.resume()
+		#if DEBUG
+			didEndTurn?()
+		#endif
 	}
 
 	// MARK: Private
@@ -207,7 +230,7 @@ final class Turns: Sendable {
 
 	private let state = Mutex(State())
 
-	private func wait(for previousTicket: Ticket, as ticket: Ticket, recordingPriority: Bool) async {
+	nonisolated(nonsending) private func wait(for previousTicket: Ticket, as ticket: Ticket, recordingPriority: Bool) async {
 		await withUnsafeContinuation { (continuation: UnsafeContinuation<Void, Never>) in
 			let (hasPreviousTicketEnded, escalateHolder) = state.withLock { state -> (Bool, (@Sendable () -> Void)?) in
 				guard !previousTicket.hasEnded else { return (true, nil) }
@@ -234,13 +257,21 @@ final class Turns: Sendable {
 struct Turn: Sendable {
 	// MARK: Initialization
 
-	fileprivate init(turns: Turns, previousTicket: Ticket?, ticket: Ticket) {
+	fileprivate init(turns: Turns, previousTicket: Ticket?, ticket: Ticket, wasCurrentWhenReserved: Bool) {
 		self.turns = turns
 		self.previousTicket = previousTicket
 		self.ticket = ticket
+		self.wasCurrentWhenReserved = wasCurrentWhenReserved
 	}
 
 	// MARK: Internal
+
+	/// Whether every earlier turn had ended when this turn was reserved, so that `begin()` returns without suspending.
+	///
+	/// A queue starts a task on the main actor only if the task's turn was current when it was reserved. A task that waits
+	/// for its turn resumes on the global concurrent executor whichever executor it waited on, so waiting on the main actor
+	/// would only make the task take an extra turn there.
+	let wasCurrentWhenReserved: Bool
 
 	/// The state of this turn. Used by tests.
 	let ticket: Ticket
@@ -252,8 +283,10 @@ struct Turn: Sendable {
 	}
 
 	/// Suspends until every earlier turn has ended.
+	///
+	/// Runs on the caller's executor, so a task on the main actor whose turn is current begins it without hopping off of the main actor.
 	/// - Warning: Must be called at most once, from the task that takes this turn.
-	func begin() async {
+	nonisolated(nonsending) func begin() async {
 		await turns.begin(ticket, after: previousTicket)
 	}
 

@@ -21,6 +21,7 @@
 // SOFTWARE.
 
 import Foundation
+import Synchronization
 import Testing
 
 @testable import AsyncQueue
@@ -1053,6 +1054,70 @@ struct ActorQueueTests {
 		await finishWaiting()
 		_ = await task.result
 		#expect(priority.map { $0 >= .high } == true)
+	}
+
+	@MainActor
+	@Test
+	func mainTask_whenTurnBeginsWithoutWaiting_startsOnMainActorWithoutHoppingThere() async {
+		// Use a queue of our own rather than `MainActor.queue`, which tests running in parallel share.
+		let mainActorQueue = ActorQueue<MainActor>()
+		mainActorQueue.adoptExecutionContext(of: MainActor.shared)
+		let executionOrder = Mutex([String]())
+		// The test holds the main actor, so neither task runs until the test suspends.
+		// A task that starts on the main actor runs before a main actor task created after it.
+		// A task that started elsewhere and then hopped to the main actor would run after that task.
+		let queuedTask = Task(on: mainActorQueue) {
+			executionOrder.withLock { $0.append("queued") }
+		}
+		let laterTask = Task { @MainActor in
+			executionOrder.withLock { $0.append("later") }
+		}
+		await queuedTask.value
+		await laterTask.value
+		#expect(executionOrder.withLock(\.self) == ["queued", "later"])
+	}
+
+	@MainActor
+	@Test
+	func mainThrowingTask_whenTurnBeginsWithoutWaiting_startsOnMainActorWithoutHoppingThere() async throws {
+		// Use a queue of our own rather than `MainActor.queue`, which tests running in parallel share.
+		let mainActorQueue = ActorQueue<MainActor>()
+		mainActorQueue.adoptExecutionContext(of: MainActor.shared)
+		let executionOrder = Mutex([String]())
+		// The test holds the main actor, so neither task runs until the test suspends.
+		// A task that starts on the main actor runs before a main actor task created after it.
+		// A task that started elsewhere and then hopped to the main actor would run after that task.
+		let queuedTask = Task(on: mainActorQueue) {
+			executionOrder.withLock { $0.append("queued") }
+			try doWork()
+		}
+		let laterTask = Task { @MainActor in
+			executionOrder.withLock { $0.append("later") }
+		}
+		try await queuedTask.value
+		await laterTask.value
+		#expect(executionOrder.withLock(\.self) == ["queued", "later"])
+	}
+
+	@Test
+	func mainTask_whenTurnCannotBeginYet_beginsInOrderOnceTurnBegins() async {
+		// Use a queue of our own rather than `MainActor.queue`, which tests running in parallel share.
+		let mainActorQueue = ActorQueue<MainActor>()
+		mainActorQueue.adoptExecutionContext(of: MainActor.shared)
+		// Hold the turn before the tasks' turns, so that every task waits for its turn off of the main actor.
+		let heldTurn = mainActorQueue.turns.reserve()
+		await heldTurn.begin()
+		let executionOrder = Mutex([Int]())
+		let tasks = (0..<100).map { index in
+			Task(on: mainActorQueue) {
+				executionOrder.withLock { $0.append(index) }
+			}
+		}
+		heldTurn.end()
+		for task in tasks {
+			await task.value
+		}
+		#expect(executionOrder.withLock(\.self) == Array(0..<100))
 	}
 
 	// MARK: Private
