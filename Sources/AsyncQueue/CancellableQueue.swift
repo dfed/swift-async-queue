@@ -44,11 +44,19 @@ public final class CancellableQueue<UnderlyingQueue: Sendable>: Sendable {
 	// MARK: Public
 
 	/// Cancels currently executing and pending tasks. Does not affect tasks enqueued after this method is called.
+	///
+	/// If another call to this method is in progress, this call may return before the other call finishes cancelling the tasks it found.
 	public func cancelTasks() {
-		taskIdentifierToCancelMap.withLock {
-			$0.values.forEach { $0?() }
+		let cancellations = taskIdentifierToCancelMap.withLock {
+			let cancellations = $0.values.compactMap(\.self)
 			// Keep reservations so that tasks that have not yet registered remain cancellable.
 			$0 = $0.filter { $0.value == nil }
+			return cancellations
+		}
+		// Cancelling a task synchronously runs its cancellation handlers, which may call back into this queue.
+		// Cancel only after releasing the lock so that those handlers can never re-enter it.
+		for cancel in cancellations {
+			cancel()
 		}
 	}
 
@@ -85,7 +93,7 @@ public final class CancellableQueue<UnderlyingQueue: Sendable>: Sendable {
 
 	fileprivate let underlyingQueue: UnderlyingQueue
 
-	fileprivate let taskIdentifierToCancelMap = Lock<[UUID: (() -> Void)?]>(value: [:])
+	fileprivate let taskIdentifierToCancelMap = Lock<[UUID: (@Sendable () -> Void)?]>(value: [:])
 }
 
 extension Task {
@@ -403,6 +411,8 @@ private final class Lock<State>: @unchecked Sendable {
 
 	// MARK: Fileprivate
 
+	/// Executes `body` while holding the lock.
+	/// - Warning: `body` must not cancel a task, resume a continuation, or otherwise call out to code that may re-enter this lock.
 	fileprivate func withLock<R: Sendable>(_ body: @Sendable (inout State) throws -> R) rethrows -> R {
 		try lockQueue.sync {
 			try body(&unsafeValue)

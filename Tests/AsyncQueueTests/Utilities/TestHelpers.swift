@@ -20,6 +20,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import Dispatch
+
 /// Suspends the calling task until it is cancelled.
 ///
 /// Returns once the calling task is cancelled. If the task is never cancelled, this function suspends forever, so a
@@ -31,4 +33,29 @@ func suspendUntilCancelled() async {
 	var untilCancelledIterator = untilCancelled.makeAsyncIterator()
 	await untilCancelledIterator.next()
 	withExtendedLifetime(untilCancelledContinuation) {}
+}
+
+/// A serial executor that runs its jobs on a dispatch queue of its own, in the order in which they are enqueued.
+final class DispatchQueueExecutor: SerialExecutor {
+	func enqueue(_ job: UnownedJob) {
+		dispatchQueue.async { [self] in
+			job.runSynchronously(on: asUnownedSerialExecutor())
+		}
+	}
+
+	func asUnownedSerialExecutor() -> UnownedSerialExecutor {
+		UnownedSerialExecutor(ordinary: self)
+	}
+
+	private let dispatchQueue = DispatchQueue(label: "DispatchQueueExecutor")
+}
+
+/// An actor that executes on a dispatch queue of its own rather than on the cooperative thread pool,
+/// so that a task that spins on it does not keep other tasks from running.
+actor DispatchQueueActor {
+	nonisolated var unownedExecutor: UnownedSerialExecutor {
+		executor.asUnownedSerialExecutor()
+	}
+
+	nonisolated private let executor = DispatchQueueExecutor()
 }
