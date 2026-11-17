@@ -17,6 +17,9 @@ jobs:
   spm-16:
     name: Build Xcode 26
     runs-on: macos-15
+    # A test that deadlocks keeps the test run from ending, so stop the
+    # job after 50 minutes rather than at GitHub's six-hour default.
+    timeout-minutes: 50
     strategy:
       matrix:
         platforms: [
@@ -69,6 +72,9 @@ jobs:
   spm-16-swift:
     name: Swift Build Xcode 26
     runs-on: macos-15
+    # A test that deadlocks keeps the test run from ending, so stop the
+    # job after 15 minutes rather than at GitHub's six-hour default.
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -82,13 +88,43 @@ jobs:
     name: "Build and Test on Linux Swift 6.2"
     runs-on: ubuntu-24.04
     container: swift:6.2
+    # A test that deadlocks keeps the test run from ending, so stop the
+    # job after 15 minutes rather than at GitHub's six-hour default.
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v7
+      # Coverage counters are plain loads and stores, and Swift Testing
+      # runs tests in parallel, so a counter that several tests update
+      # can lose an increment. llvm-cov counts some regions, such as an
+      # `else` branch or the code after a `guard`, by subtracting one
+      # counter from another, so a region that ran can read zero.
+      # `-instrprof-atomic-counter-update-all` makes every update
+      # atomic, so the counts are exact. A build system can drop the
+      # flag, which the next step catches.
       - name: Build and Test Framework
-        run: swift test -c release --enable-code-coverage -Xswiftc -enable-testing
+        run: swift test -c release --enable-code-coverage -Xswiftc -enable-testing -Xswiftc -Xllvm -Xswiftc -instrprof-atomic-counter-update-all
+      # Fails unless the test binary updates coverage counters and
+      # every update is atomic. It reads x86_64 code: an atomic update
+      # follows a `lock` prefix, which llvm-objdump prints on its own
+      # line, and `leaq` only takes a counter's address. On another
+      # architecture it finds no `lock` and fails. The disassembly goes
+      # to a file rather than a pipe, so that a missing llvm-objdump or
+      # test binary fails the step with llvm-objdump's own error.
+      - name: Check Atomic Coverage Counters
+        run: |
+          llvm-objdump -d --no-show-raw-insn .build/x86_64-unknown-linux-gnu/release/swift-async-queuePackageTests.xctest > .build/disassembly.txt
+          awk '
+            /<__profc_/ && $2 != "leaq" { if (previous == "lock") atomic++; else plain++ }
+            { previous = $2 }
+            END {
+              if (plain > 0) print "::error::" plain " coverage counter updates in the test binary are not atomic."
+              if (atomic == 0) print "::error::The test binary has no atomic coverage counter updates."
+              print atomic + 0 " atomic and " plain + 0 " non-atomic coverage counter updates."
+              exit (plain > 0 || atomic == 0)
+            }' .build/disassembly.txt
       - name: Prepare Coverage Reports
         run: |
           llvm-cov export -format="lcov" .build/x86_64-unknown-linux-gnu/release/swift-async-queuePackageTests.xctest -instr-profile .build/x86_64-unknown-linux-gnu/release/codecov/default.profdata > coverage.lcov
@@ -110,6 +146,9 @@ jobs:
     # collected by the pinned jobs only, so a different toolchain can't
     # skew the report.
     container: swift:latest
+    # A test that deadlocks keeps the test run from ending, so stop the
+    # job after 15 minutes rather than at GitHub's six-hour default.
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
