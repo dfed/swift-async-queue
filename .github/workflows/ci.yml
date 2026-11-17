@@ -206,6 +206,11 @@ jobs:
       # flag, which the next step catches.
       - name: Build and Test Framework
         run: swift test -c release --enable-code-coverage -Xswiftc -enable-testing -Xswiftc -Xllvm -Xswiftc -instrprof-atomic-counter-update-all
+      # A release build compiles out the tests under `#if DEBUG`, which
+      # use test hooks that only debug builds have, so run the tests in
+      # a debug build too.
+      - name: Test Debug Build
+        run: swift test
       # Fails unless the test binary updates coverage counters and
       # every update is atomic. It reads x86_64 code: an atomic update
       # follows a `lock` prefix, which llvm-objdump prints on its own

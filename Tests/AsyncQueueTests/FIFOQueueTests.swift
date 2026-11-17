@@ -1115,38 +1115,38 @@ struct FIFOQueueTests {
 	#if DEBUG
 		@Test
 		func task_withMainActorOperation_whenTurnBeginsWithoutWaiting_endsItsTurnOnMainActor() async {
-			let wasEachTurnEndedOnMainThread = Mutex([Bool]())
+			let wasEachTurnEndedOnMainQueue = Mutex([Bool]())
 			let turns = Turns(didEndTurn: {
-				wasEachTurnEndedOnMainThread.withLock { $0.append(Thread.isMainThread) }
+				wasEachTurnEndedOnMainQueue.withLock { $0.append(isOnMainQueue) }
 			})
 			let task = Task(on: FIFOQueue(turns: turns)) { @MainActor in
 				MainActor.assertIsolated()
 			}
 			await task.value
-			// A task that hopped off of the main actor before ending its turn would end it on another thread.
-			#expect(wasEachTurnEndedOnMainThread.withLock(\.self) == [true])
+			// A task that hopped off of the main actor before ending its turn would end it off of the main queue.
+			#expect(wasEachTurnEndedOnMainQueue.withLock(\.self) == [true])
 		}
 
 		@Test
 		func throwingTask_withMainActorOperation_whenTurnBeginsWithoutWaiting_endsItsTurnOnMainActor() async throws {
-			let wasEachTurnEndedOnMainThread = Mutex([Bool]())
+			let wasEachTurnEndedOnMainQueue = Mutex([Bool]())
 			let turns = Turns(didEndTurn: {
-				wasEachTurnEndedOnMainThread.withLock { $0.append(Thread.isMainThread) }
+				wasEachTurnEndedOnMainQueue.withLock { $0.append(isOnMainQueue) }
 			})
 			let task = Task(on: FIFOQueue(turns: turns)) { @MainActor in
 				MainActor.assertIsolated()
 				try doWork()
 			}
 			try await task.value
-			// A task that hopped off of the main actor before ending its turn would end it on another thread.
-			#expect(wasEachTurnEndedOnMainThread.withLock(\.self) == [true])
+			// A task that hopped off of the main actor before ending its turn would end it off of the main queue.
+			#expect(wasEachTurnEndedOnMainQueue.withLock(\.self) == [true])
 		}
 
 		@Test
 		func task_withMainActorOperation_whenTurnCannotBeginYet_endsItsTurnOnMainActor() async {
-			let wasEachTurnEndedOnMainThread = Mutex([Bool]())
+			let wasEachTurnEndedOnMainQueue = Mutex([Bool]())
 			let turns = Turns(didEndTurn: {
-				wasEachTurnEndedOnMainThread.withLock { $0.append(Thread.isMainThread) }
+				wasEachTurnEndedOnMainQueue.withLock { $0.append(isOnMainQueue) }
 			})
 			// Hold the turn before the task's turn, so that the task waits for its turn off of the main actor.
 			let heldTurn = turns.reserve()
@@ -1157,15 +1157,15 @@ struct FIFOQueueTests {
 			heldTurn.end()
 			await task.value
 			// The test ends the held turn off of the main actor. A task that hopped off of the main actor before ending its turn
-			// would end it on another thread too.
-			#expect(wasEachTurnEndedOnMainThread.withLock(\.self) == [false, true])
+			// would end it off of the main queue too.
+			#expect(wasEachTurnEndedOnMainQueue.withLock(\.self) == [false, true])
 		}
 
 		@Test
 		func throwingTask_withMainActorOperation_whenTurnCannotBeginYet_endsItsTurnOnMainActor() async throws {
-			let wasEachTurnEndedOnMainThread = Mutex([Bool]())
+			let wasEachTurnEndedOnMainQueue = Mutex([Bool]())
 			let turns = Turns(didEndTurn: {
-				wasEachTurnEndedOnMainThread.withLock { $0.append(Thread.isMainThread) }
+				wasEachTurnEndedOnMainQueue.withLock { $0.append(isOnMainQueue) }
 			})
 			// Hold the turn before the task's turn, so that the task waits for its turn off of the main actor.
 			let heldTurn = turns.reserve()
@@ -1177,8 +1177,8 @@ struct FIFOQueueTests {
 			heldTurn.end()
 			try await task.value
 			// The test ends the held turn off of the main actor. A task that hopped off of the main actor before ending its turn
-			// would end it on another thread too.
-			#expect(wasEachTurnEndedOnMainThread.withLock(\.self) == [false, true])
+			// would end it off of the main queue too.
+			#expect(wasEachTurnEndedOnMainQueue.withLock(\.self) == [false, true])
 		}
 	#endif
 
