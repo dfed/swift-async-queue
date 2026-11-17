@@ -22,6 +22,30 @@
 
 import Dispatch
 
+/// A task-local value that tests use to check which task-local values an enqueued operation sees.
+enum TestTaskLocal {
+	@TaskLocal static var value = "default"
+}
+
+/// Returns the priority at which a task executes when `enqueue` creates it from a task with the given priority.
+///
+/// The task is never awaited, since awaiting it would escalate its priority.
+/// - Parameters:
+///   - enqueuingPriority: The priority of the task that calls `enqueue`.
+///   - enqueue: Creates a task that passes its `Task.currentPriority` to `report`.
+func priorityOfTask(
+	enqueuedFromTaskWithPriority enqueuingPriority: TaskPriority,
+	_ enqueue: @escaping @Sendable (_ report: @escaping @Sendable (TaskPriority) -> Void) -> Void,
+) async -> TaskPriority? {
+	let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+	// Do not await this task either: awaiting it would escalate the priority it enqueues from.
+	Task.detached(priority: enqueuingPriority) {
+		enqueue { prioritiesContinuation.yield($0) }
+	}
+	var prioritiesIterator = priorities.makeAsyncIterator()
+	return await prioritiesIterator.next()
+}
+
 /// Suspends the calling task until it is cancelled.
 ///
 /// Returns once the calling task is cancelled. If the task is never cancelled, this function suspends forever, so a
