@@ -21,10 +21,20 @@
 // SOFTWARE.
 
 import Dispatch
+import Synchronization
 
 /// A task-local value that tests use to check which task-local values an enqueued operation sees.
 enum TestTaskLocal {
 	@TaskLocal static var value = "default"
+}
+
+/// Whether the calling code runs on the main dispatch queue.
+///
+/// The main actor runs its code on the main dispatch queue. On Linux, threads other than the main thread can run the
+/// main dispatch queue's work, so code on the main actor doesn't always run on the main thread. Check the queue, not
+/// `Thread.isMainThread`.
+var isOnMainQueue: Bool {
+	mainQueueKey.withLock { DispatchQueue.getSpecific(key: $0) } == true
 }
 
 /// Returns the priority at which a task executes when `enqueue` creates it from a task with the given priority.
@@ -102,3 +112,11 @@ actor DispatchQueueActor {
 
 	nonisolated private let executor = DispatchQueueExecutor()
 }
+
+/// A key whose value is `true` on the main dispatch queue, and `nil` on every other queue.
+/// A `Mutex` holds the key because it is `Sendable` whether or not `DispatchSpecificKey` is on a given platform.
+private let mainQueueKey = {
+	let key = DispatchSpecificKey<Bool>()
+	DispatchQueue.main.setSpecific(key: key, value: true)
+	return Mutex(key)
+}()

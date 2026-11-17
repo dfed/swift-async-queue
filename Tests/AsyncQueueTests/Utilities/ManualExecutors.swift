@@ -20,7 +20,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import Dispatch
 import Synchronization
 
 @testable import AsyncQueue
@@ -60,7 +59,7 @@ final class ManualTaskExecutor: TaskExecutor {
 		let job = UnownedJob(job)
 		let enqueuedJob = EnqueuedJob(
 			priority: TaskPriority(rawValue: job.priority.rawValue),
-			wasEnqueuedOnMainQueue: Self.mainQueueKey.withLock { DispatchQueue.getSpecific(key: $0) } == true,
+			wasEnqueuedOnMainQueue: isOnMainQueue,
 		)
 		state.withLock { state in
 			state.pendingJobs.append(job)
@@ -105,14 +104,6 @@ final class ManualTaskExecutor: TaskExecutor {
 		var pendingJobs = [UnownedJob]()
 		var enqueuedJobs = [EnqueuedJob]()
 	}
-
-	/// A key whose value is `true` on the main dispatch queue, and `nil` on every other queue.
-	/// A `Mutex` holds the key because it is `Sendable` whether or not `DispatchSpecificKey` is on a given platform.
-	private static let mainQueueKey = {
-		let key = DispatchSpecificKey<Bool>()
-		DispatchQueue.main.setSpecific(key: key, value: true)
-		return Mutex(key)
-	}()
 
 	private let enqueuedJobsContinuation: AsyncStream<Void>.Continuation
 	private let state = Mutex(State())
