@@ -79,15 +79,15 @@ public final class ActorQueue<ActorType: Actor>: @unchecked Sendable {
 	/// Whether every task you enqueued on this queue has started running on the actor.
 	///
 	/// A task counts from the moment you enqueue it until it starts running on the actor.
-	/// So the queue can be idle while the operations of its tasks haven't finished.
+	/// So this property can be `true` while the operations of its tasks haven't finished.
 	/// A task runs alongside the code that enqueues it, so the task might start running on the actor before that code reads this property.
 	/// If that code is running on the actor, though, the task can't start running there until the code suspends or returns.
 	///
-	/// The value can change as soon as you read it: a task you enqueue afterward makes the queue busy again.
-	/// If one actor enqueues every task on the queue, that actor can read this property and then remove an idle queue
+	/// The value can change as soon as you read it: a task you enqueue afterward makes it `false` again.
+	/// If one actor enqueues every task on the queue, that actor can read this property and then remove the queue
 	/// without suspending between the read and the removal.
 	/// No task can be enqueued in between, so every task enqueued on the removed queue has started running on the queue's actor.
-	public var isIdle: Bool {
+	public var hasStartedAllWork: Bool {
 		turns.isIdle
 	}
 
