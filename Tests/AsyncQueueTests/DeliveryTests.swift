@@ -50,4 +50,38 @@ struct DeliveryTests {
 			try await systemUnderTest.getValue()
 		})
 	}
+
+	@Test
+	func getValue_whenValueIsSentAfterGetValueSuspends() async {
+		let systemUnderTest = Delivery<Bool, Never>()
+		await #expect(valueOnceGetValueSuspends(on: systemUnderTest) == true)
+	}
+
+	@Test
+	func getValueThrowing_whenFailureIsSentAfterGetValueSuspends() async throws {
+		let systemUnderTest = Delivery<Bool, Error>()
+		await #expect(throws: CancellationError.self, performing: {
+			try await valueOnceGetValueSuspends(on: systemUnderTest)
+		})
+	}
+
+	// MARK: Private
+
+	/// Sends `true` to the delivery once `getValue()` suspends, and returns the value that `getValue()` returns.
+	private func valueOnceGetValueSuspends(on delivery: isolated Delivery<Bool, Never>) async -> Bool {
+		// This task is isolated to the delivery, which this function occupies until `getValue()` suspends.
+		Task {
+			delivery.sendValue(true)
+		}
+		return await delivery.getValue()
+	}
+
+	/// Sends a `CancellationError` to the delivery once `getValue()` suspends, and returns the value that `getValue()` returns.
+	private func valueOnceGetValueSuspends(on delivery: isolated Delivery<Bool, Error>) async throws -> Bool {
+		// This task is isolated to the delivery, which this function occupies until `getValue()` suspends.
+		Task {
+			delivery.sendFailure(CancellationError())
+		}
+		return try await delivery.getValue()
+	}
 }
