@@ -26,35 +26,51 @@
 public final class FIFOQueue: Sendable {
 	// MARK: Initialization
 
-	/// Instantiates a FIFO queue.
-	/// - Parameter name: Human readable name of the queue.
-	/// - Parameter priority: The baseline priority of the tasks added to the asynchronous queue.
-	public init(name: String? = nil, priority: TaskPriority? = nil) {
-		let (taskStream, taskStreamContinuation) = AsyncStream<FIFOTask>.makeStream()
-		self.taskStreamContinuation = taskStreamContinuation
-
-		Task.detached(name: name, priority: priority) {
-			for await fifoTask in taskStream {
-				await fifoTask.task()
-			}
-		}
+	/// Creates a FIFO queue.
+	/// - Parameter priority: The lowest priority at which the queue's tasks run.
+	///   A task that would run at a lower priority runs at this priority instead.
+	///   Pass `nil` to run each task at the priority you pass to `Task(on:)`,
+	///   or, if you pass `nil` there too, at the priority of the code that enqueues it.
+	public init(priority: TaskPriority? = nil) {
+		self.priority = priority
 	}
 
-	deinit {
-		taskStreamContinuation.finish()
-	}
+	// MARK: Internal
+
+	/// Hands out turns to execute, in the order in which tasks are enqueued.
+	let turns = Turns()
 
 	// MARK: Fileprivate
 
-	fileprivate struct FIFOTask: Sendable {
-		init(task: @escaping @Sendable () async -> Void) {
-			self.task = task
+	/// Returns the priority with which to create a task that was enqueued with the given priority.
+	/// - Parameter taskPriority: The priority with which the task was enqueued. `nil` means the priority of the enqueuing context.
+	fileprivate func priority(forTaskEnqueuedWith taskPriority: TaskPriority?) -> TaskPriority? {
+		if let priority, Self.priorityOfNewTask(enqueuedWith: taskPriority) < priority {
+			priority
+		} else {
+			// Keep the enqueued priority when it suffices, so that `Task` determines the task's priority itself.
+			taskPriority
 		}
-
-		let task: @Sendable () async -> Void
 	}
 
-	fileprivate let taskStreamContinuation: AsyncStream<FIFOTask>.Continuation
+	/// Returns the priority that `Task.init(priority:)` gives a task created in the current context with the given priority.
+	private static func priorityOfNewTask(enqueuedWith taskPriority: TaskPriority?) -> TaskPriority {
+		// `Task` treats a priority with a raw value of zero as no priority.
+		if let taskPriority, taskPriority.rawValue != 0 {
+			return taskPriority
+		} else {
+			// Within a task, a new task inherits the task's base priority, not its escalated priority.
+			// Outside of a task, a new task takes the current thread's priority, or `.medium` if the thread has none.
+			let inheritedPriority = Task.basePriority ?? Task.currentPriority
+			guard inheritedPriority.rawValue != 0 else { return .medium }
+			// `Task` lowers an inherited user-interactive priority to user-initiated, which is `.high`.
+			return min(inheritedPriority, .high)
+		}
+	}
+
+	// MARK: Private
+
+	private let priority: TaskPriority?
 }
 
 extension Task {
@@ -91,24 +107,11 @@ extension Task {
 		on fifoQueue: FIFOQueue,
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async -> Success,
 	) where Failure == Never {
-		let delivery = Delivery<Success, Failure>()
-		let semaphore = Semaphore()
-		let executeOnce = UnsafeClosureHolder(operation: operation)
-		let task = FIFOQueue.FIFOTask {
-			await semaphore.wait()
-			await delivery.execute({ @Sendable delivery in
-				await delivery.sendValue(executeOnce.operation())
-			}, in: delivery, name: name, priority: priority).value
-		}
-		fifoQueue.taskStreamContinuation.yield(task)
-		self.init(name: name) {
-			await withTaskCancellationHandler(
-				operation: {
-					await semaphore.signal()
-					return await delivery.getValue()
-				},
-				onCancel: delivery.cancel,
-			)
+		let turn = fifoQueue.turns.reserve()
+		self.init(name: name, priority: fifoQueue.priority(forTaskEnqueuedWith: priority)) {
+			await turn.begin()
+			defer { turn.end() }
+			return await operation()
 		}
 	}
 
@@ -145,28 +148,11 @@ extension Task {
 		on fifoQueue: FIFOQueue,
 		@_inheritActorContext @_implicitSelfCapture operation: sending @escaping @isolated(any) () async throws -> Success,
 	) where Failure == any Error {
-		let delivery = Delivery<Success, Failure>()
-		let semaphore = Semaphore()
-		let executeOnce = UnsafeThrowingClosureHolder(operation: operation)
-		let task = FIFOQueue.FIFOTask {
-			await semaphore.wait()
-			await delivery.execute({ @Sendable delivery in
-				do {
-					try await delivery.sendValue(executeOnce.operation())
-				} catch {
-					delivery.sendFailure(error)
-				}
-			}, in: delivery, name: name, priority: priority).value
-		}
-		fifoQueue.taskStreamContinuation.yield(task)
-		self.init(name: name) {
-			try await withTaskCancellationHandler(
-				operation: {
-					await semaphore.signal()
-					return try await delivery.getValue()
-				},
-				onCancel: delivery.cancel,
-			)
+		let turn = fifoQueue.turns.reserve()
+		self.init(name: name, priority: fifoQueue.priority(forTaskEnqueuedWith: priority)) {
+			await turn.begin()
+			defer { turn.end() }
+			return try await operation()
 		}
 	}
 
@@ -206,23 +192,11 @@ extension Task {
 		isolatedTo isolatedActor: ActorType,
 		operation: @Sendable @escaping (isolated ActorType) async -> Success,
 	) where Failure == Never {
-		let delivery = Delivery<Success, Failure>()
-		let semaphore = Semaphore()
-		let task = FIFOQueue.FIFOTask {
-			await semaphore.wait()
-			await delivery.execute({ @Sendable isolatedActor in
-				await delivery.sendValue(operation(isolatedActor))
-			}, in: isolatedActor, name: name, priority: priority).value
-		}
-		fifoQueue.taskStreamContinuation.yield(task)
-		self.init(name: name) {
-			await withTaskCancellationHandler(
-				operation: {
-					await semaphore.signal()
-					return await delivery.getValue()
-				},
-				onCancel: delivery.cancel,
-			)
+		let turn = fifoQueue.turns.reserve()
+		self.init(name: name, priority: fifoQueue.priority(forTaskEnqueuedWith: priority)) {
+			await turn.begin()
+			defer { turn.end() }
+			return await operation(isolatedActor)
 		}
 	}
 
@@ -262,43 +236,11 @@ extension Task {
 		isolatedTo isolatedActor: ActorType,
 		operation: @Sendable @escaping (isolated ActorType) async throws -> Success,
 	) where Failure == any Error {
-		let delivery = Delivery<Success, Failure>()
-		let semaphore = Semaphore()
-		let task = FIFOQueue.FIFOTask {
-			await semaphore.wait()
-			await delivery.execute({ @Sendable isolatedActor in
-				do {
-					try await delivery.sendValue(operation(isolatedActor))
-				} catch {
-					await delivery.sendFailure(error)
-				}
-			}, in: isolatedActor, name: name, priority: priority).value
-		}
-		fifoQueue.taskStreamContinuation.yield(task)
-		self.init(name: name, priority: priority) {
-			try await withTaskCancellationHandler(
-				operation: {
-					await semaphore.signal()
-					return try await delivery.getValue()
-				},
-				onCancel: delivery.cancel,
-			)
+		let turn = fifoQueue.turns.reserve()
+		self.init(name: name, priority: fifoQueue.priority(forTaskEnqueuedWith: priority)) {
+			await turn.begin()
+			defer { turn.end() }
+			return try await operation(isolatedActor)
 		}
 	}
-}
-
-private struct UnsafeClosureHolder<Success: Sendable>: @unchecked Sendable {
-	init(operation: sending @escaping @isolated(any) () async -> Success) {
-		self.operation = operation
-	}
-
-	let operation: @isolated(any) () async -> Success
-}
-
-private struct UnsafeThrowingClosureHolder<Success: Sendable>: @unchecked Sendable {
-	init(operation: sending @escaping @isolated(any) () async throws -> Success) {
-		self.operation = operation
-	}
-
-	let operation: @isolated(any) () async throws -> Success
 }

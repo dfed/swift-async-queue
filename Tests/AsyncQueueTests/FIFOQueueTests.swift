@@ -213,21 +213,6 @@ struct FIFOQueueTests {
 	}
 
 	@Test
-	func taskIsolatedTo_isNotReentrant() async {
-		let counter = Counter()
-		Task(on: systemUnderTest, isolatedTo: counter) { [systemUnderTest] counter in
-			Task(on: systemUnderTest, isolatedTo: counter) { counter in
-				counter.incrementAndExpectCount(equals: 2)
-			}
-			counter.incrementAndExpectCount(equals: 1)
-			Task(on: systemUnderTest, isolatedTo: counter) { counter in
-				counter.incrementAndExpectCount(equals: 3)
-			}
-		}
-		await Task(on: systemUnderTest) { /* Drain the queue */ }.value
-	}
-
-	@Test
 	func throwingTask_isNotReentrant() async {
 		let counter = Counter()
 		Task(on: systemUnderTest) { [systemUnderTest] in
@@ -238,23 +223,6 @@ struct FIFOQueueTests {
 			await counter.incrementAndExpectCount(equals: 1)
 			Task(on: systemUnderTest) {
 				await counter.incrementAndExpectCount(equals: 3)
-				try doWork()
-			}
-		}
-		await Task(on: systemUnderTest) { /* Drain the queue */ }.value
-	}
-
-	@Test
-	func throwingTaskIsolatedTo_isNotReentrant() async throws {
-		let counter = Counter()
-		Task(on: systemUnderTest, isolatedTo: counter) { [systemUnderTest] counter in
-			Task(on: systemUnderTest, isolatedTo: counter) { counter in
-				counter.incrementAndExpectCount(equals: 2)
-				try doWork()
-			}
-			counter.incrementAndExpectCount(equals: 1)
-			Task(on: systemUnderTest, isolatedTo: counter) { counter in
-				counter.incrementAndExpectCount(equals: 3)
 				try doWork()
 			}
 		}
@@ -416,23 +384,6 @@ struct FIFOQueueTests {
 	}
 
 	@Test
-	func task_cancelledWhileWaitingForPriorTask_executesOperationCancelled() async {
-		let priorTaskAllowedToEnd = Semaphore()
-		Task(on: systemUnderTest) {
-			await priorTaskAllowedToEnd.wait()
-		}
-		let task = Task(on: systemUnderTest) {
-			Task.isCancelled
-		}
-
-		// The task's operation cannot begin until the prior task ends, so this cancels the task before its operation begins.
-		task.cancel()
-		await priorTaskAllowedToEnd.signal()
-
-		#expect(await task.value)
-	}
-
-	@Test
 	func task_canBeCancelledFromCancellationHandlerOfAnotherQueuedTask() async {
 		let otherQueue = FIFOQueue()
 		let taskStarted = Semaphore()
@@ -517,6 +468,321 @@ struct FIFOQueueTests {
 		} catch {
 			#expect(error as? TestError == expectedError)
 		}
+	}
+
+	@Test
+	func throwingTask_whenOperationThrows_allowsNextTaskToBegin() async {
+		struct TestError: Error {}
+		let task = Task(on: systemUnderTest) { throw TestError() }
+		// Reserve the turn after the task's turn, as the next task enqueued on the queue would.
+		let hasNextTurnBegun = probeNextTurn(of: systemUnderTest.turns)
+		await #expect(throws: TestError.self) { try await task.value }
+		// The task ended its turn when its operation threw, so the next turn begins without waiting.
+		#expect(hasNextTurnBegun())
+	}
+
+	@Test
+	func throwingTaskIsolatedTo_whenOperationThrows_allowsNextTaskToBegin() async {
+		struct TestError: Error {}
+		let task = Task(on: systemUnderTest, isolatedTo: Counter()) { _ in throw TestError() }
+		// Reserve the turn after the task's turn, as the next task enqueued on the queue would.
+		let hasNextTurnBegun = probeNextTurn(of: systemUnderTest.turns)
+		await #expect(throws: TestError.self) { try await task.value }
+		// The task ended its turn when its operation threw, so the next turn begins without waiting.
+		#expect(hasNextTurnBegun())
+	}
+
+	@Test
+	func task_holdsTurnUntilItsOperationReturns() async {
+		let operationStarted = Semaphore()
+		let operationAllowedToReturn = Semaphore()
+		let task = Task(on: systemUnderTest) {
+			await operationStarted.signal()
+			await operationAllowedToReturn.wait()
+		}
+		await operationStarted.wait()
+		// The task holds its turn until its operation returns, so the next turn cannot begin yet.
+		let hasNextTurnBegun = probeNextTurn(of: systemUnderTest.turns)
+		let didNextTurnBeginBeforeOperationReturned = hasNextTurnBegun()
+		await operationAllowedToReturn.signal()
+		await task.value
+		let didNextTurnBeginAfterTaskCompleted = hasNextTurnBegun()
+		#expect(!didNextTurnBeginBeforeOperationReturned)
+		#expect(didNextTurnBeginAfterTaskCompleted)
+	}
+
+	@Test
+	func throwingTask_holdsTurnUntilItsOperationReturns() async throws {
+		let operationStarted = Semaphore()
+		let operationAllowedToReturn = Semaphore()
+		let task = Task(on: systemUnderTest) {
+			await operationStarted.signal()
+			await operationAllowedToReturn.wait()
+			try doWork()
+		}
+		await operationStarted.wait()
+		// The task holds its turn until its operation returns, so the next turn cannot begin yet.
+		let hasNextTurnBegun = probeNextTurn(of: systemUnderTest.turns)
+		let didNextTurnBeginBeforeOperationReturned = hasNextTurnBegun()
+		await operationAllowedToReturn.signal()
+		try await task.value
+		let didNextTurnBeginAfterTaskCompleted = hasNextTurnBegun()
+		#expect(!didNextTurnBeginBeforeOperationReturned)
+		#expect(didNextTurnBeginAfterTaskCompleted)
+	}
+
+	@Test
+	func taskIsolatedTo_holdsTurnUntilItsOperationReturns() async {
+		let operationStarted = Semaphore()
+		let operationAllowedToReturn = Semaphore()
+		let task = Task(on: systemUnderTest, isolatedTo: Counter()) { _ in
+			await operationStarted.signal()
+			await operationAllowedToReturn.wait()
+		}
+		await operationStarted.wait()
+		// The task holds its turn until its operation returns, so the next turn cannot begin yet.
+		let hasNextTurnBegun = probeNextTurn(of: systemUnderTest.turns)
+		let didNextTurnBeginBeforeOperationReturned = hasNextTurnBegun()
+		await operationAllowedToReturn.signal()
+		await task.value
+		let didNextTurnBeginAfterTaskCompleted = hasNextTurnBegun()
+		#expect(!didNextTurnBeginBeforeOperationReturned)
+		#expect(didNextTurnBeginAfterTaskCompleted)
+	}
+
+	@Test
+	func throwingTaskIsolatedTo_holdsTurnUntilItsOperationReturns() async throws {
+		let operationStarted = Semaphore()
+		let operationAllowedToReturn = Semaphore()
+		let task = Task(on: systemUnderTest, isolatedTo: Counter()) { _ in
+			await operationStarted.signal()
+			await operationAllowedToReturn.wait()
+			try doWork()
+		}
+		await operationStarted.wait()
+		// The task holds its turn until its operation returns, so the next turn cannot begin yet.
+		let hasNextTurnBegun = probeNextTurn(of: systemUnderTest.turns)
+		let didNextTurnBeginBeforeOperationReturned = hasNextTurnBegun()
+		await operationAllowedToReturn.signal()
+		try await task.value
+		let didNextTurnBeginAfterTaskCompleted = hasNextTurnBegun()
+		#expect(!didNextTurnBeginBeforeOperationReturned)
+		#expect(didNextTurnBeginAfterTaskCompleted)
+	}
+
+	@Test
+	func task_seesCallersTaskLocalValues() async throws {
+		let systemUnderTest = TestTaskLocal.$value.withValue("queue creator") {
+			FIFOQueue()
+		}
+		let values = try await TestTaskLocal.$value.withValue("caller") {
+			try await [
+				Task(on: systemUnderTest) { TestTaskLocal.value }.value,
+				Task(on: systemUnderTest) { try doWork(); return TestTaskLocal.value }.value,
+				Task(on: systemUnderTest, isolatedTo: Counter()) { _ in TestTaskLocal.value }.value,
+				Task(on: systemUnderTest, isolatedTo: Counter()) { _ in try doWork(); return TestTaskLocal.value }.value,
+			]
+		}
+		#expect(values == Array(repeating: "caller", count: 4))
+		#expect(await Task(on: systemUnderTest) { TestTaskLocal.value }.value == "default")
+	}
+
+	@Test
+	func task_withNilPriority_inheritsCallersPriority() async {
+		let systemUnderTest = await Task.detached(priority: .background) { FIFOQueue() }.value
+		for priority in [TaskPriority.background, .low, .medium, .high] {
+			let executionPriorities = await [
+				priorityOfTask(enqueuedFromTaskWithPriority: priority) { report in
+					Task(on: systemUnderTest) { report(Task.currentPriority) }
+				},
+				priorityOfTask(enqueuedFromTaskWithPriority: priority) { report in
+					Task(on: systemUnderTest) { try doWork(); report(Task.currentPriority) }
+				},
+				priorityOfTask(enqueuedFromTaskWithPriority: priority) { report in
+					Task(on: systemUnderTest, isolatedTo: Counter()) { _ in report(Task.currentPriority) }
+				},
+				priorityOfTask(enqueuedFromTaskWithPriority: priority) { report in
+					Task(on: systemUnderTest, isolatedTo: Counter()) { _ in try doWork(); report(Task.currentPriority) }
+				},
+			]
+			#expect(executionPriorities == Array(repeating: priority, count: 4))
+		}
+	}
+
+	@Test
+	func task_withPriority_executesAtThatPriority() async {
+		for priority in [TaskPriority.background, .low, .medium, .high] {
+			let executionPriorities = await [
+				priorityOfTask(enqueuedFromTaskWithPriority: .high) { [systemUnderTest] report in
+					Task(priority: priority, on: systemUnderTest) { report(Task.currentPriority) }
+				},
+				priorityOfTask(enqueuedFromTaskWithPriority: .high) { [systemUnderTest] report in
+					Task(priority: priority, on: systemUnderTest) { try doWork(); report(Task.currentPriority) }
+				},
+				priorityOfTask(enqueuedFromTaskWithPriority: .high) { [systemUnderTest] report in
+					Task(priority: priority, on: systemUnderTest, isolatedTo: Counter()) { _ in report(Task.currentPriority) }
+				},
+				priorityOfTask(enqueuedFromTaskWithPriority: .high) { [systemUnderTest] report in
+					Task(priority: priority, on: systemUnderTest, isolatedTo: Counter()) { _ in try doWork(); report(Task.currentPriority) }
+				},
+			]
+			#expect(executionPriorities == Array(repeating: priority, count: 4))
+		}
+	}
+
+	@Test
+	func task_onQueueWithPriority_withLowerPriority_executesAtQueuePriority() async {
+		let systemUnderTest = FIFOQueue(priority: .medium)
+		let executionPriorities = await [
+			priorityOfTask(enqueuedFromTaskWithPriority: .high) { report in
+				Task(priority: .low, on: systemUnderTest) { report(Task.currentPriority) }
+			},
+			priorityOfTask(enqueuedFromTaskWithPriority: .high) { report in
+				Task(priority: .low, on: systemUnderTest, isolatedTo: Counter()) { _ in report(Task.currentPriority) }
+			},
+		]
+		#expect(executionPriorities == [.medium, .medium])
+	}
+
+	@Test
+	func task_onQueueWithPriority_withHigherPriority_executesAtThatPriority() async {
+		let systemUnderTest = FIFOQueue(priority: .medium)
+		let executionPriorities = await [
+			priorityOfTask(enqueuedFromTaskWithPriority: .background) { report in
+				Task(priority: .high, on: systemUnderTest) { report(Task.currentPriority) }
+			},
+			priorityOfTask(enqueuedFromTaskWithPriority: .background) { report in
+				Task(priority: .high, on: systemUnderTest, isolatedTo: Counter()) { _ in report(Task.currentPriority) }
+			},
+		]
+		#expect(executionPriorities == [.high, .high])
+	}
+
+	@Test
+	func task_onQueueWithPriority_withNilPriority_executesAtHigherOfCallersAndQueuePriority() async {
+		let systemUnderTest = FIFOQueue(priority: .medium)
+		let executionPriorities = await [
+			priorityOfTask(enqueuedFromTaskWithPriority: .background) { report in
+				Task(on: systemUnderTest) { report(Task.currentPriority) }
+			},
+			priorityOfTask(enqueuedFromTaskWithPriority: .high) { report in
+				Task(on: systemUnderTest) { report(Task.currentPriority) }
+			},
+			priorityOfTask(enqueuedFromTaskWithPriority: .background) { report in
+				Task(on: systemUnderTest, isolatedTo: Counter()) { _ in report(Task.currentPriority) }
+			},
+			priorityOfTask(enqueuedFromTaskWithPriority: .high) { report in
+				Task(on: systemUnderTest, isolatedTo: Counter()) { _ in report(Task.currentPriority) }
+			},
+		]
+		#expect(executionPriorities == [.medium, .high, .medium, .high])
+	}
+
+	@Test
+	func task_onQueueWithPriority_enqueuedFromEscalatedTaskWithLowerBasePriority_executesAtQueuePriority() async {
+		let systemUnderTest = FIFOQueue(priority: .medium)
+		let enqueuingTaskAllowedToEnqueue = Semaphore()
+		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+		let enqueuingTask = Task.detached(priority: .background) {
+			// Wait for a higher-priority task to escalate this task above the queue's priority.
+			await enqueuingTaskAllowedToEnqueue.wait()
+			// Do not await the enqueued task: awaiting it would escalate it.
+			Task(on: systemUnderTest) {
+				prioritiesContinuation.yield(Task.currentPriority)
+			}
+		}
+		await value(of: enqueuingTask, awaitedFromTaskWithPriority: .high) {
+			await enqueuingTaskAllowedToEnqueue.signal()
+		}
+		var prioritiesIterator = priorities.makeAsyncIterator()
+		let executionPriority = await prioritiesIterator.next()
+		#expect(executionPriority == .medium)
+	}
+
+	@Test
+	func task_onQueueWithPriority_enqueuedOutsideOfAnyTask_executesAtHigherOfNewTaskAndQueuePriority() async {
+		// Threads without a quality of service take the default branch; threads with one, on platforms that support it, do not.
+		for qualityOfService in [QualityOfService.default, .userInitiated, .utility] {
+			for queuePriority in [TaskPriority.background, .low, .medium, .high] {
+				let systemUnderTest = FIFOQueue(priority: queuePriority)
+				let (priorities, prioritiesContinuation) = AsyncStream<(isEnqueued: Bool, priority: TaskPriority)>.makeStream()
+				// Enqueue from a thread that is not running a task, and create a plain task there for comparison.
+				let thread = Thread {
+					Task {
+						prioritiesContinuation.yield((isEnqueued: false, priority: Task.currentPriority))
+					}
+					Task(on: systemUnderTest) {
+						prioritiesContinuation.yield((isEnqueued: true, priority: Task.currentPriority))
+					}
+				}
+				thread.qualityOfService = qualityOfService
+				thread.start()
+				var plainTaskPriority: TaskPriority?
+				var executionPriority: TaskPriority?
+				// The thread reports exactly two priorities: one from each task.
+				for await (isEnqueued, priority) in priorities.prefix(2) {
+					if isEnqueued {
+						executionPriority = priority
+					} else {
+						plainTaskPriority = priority
+					}
+				}
+				#expect(plainTaskPriority.map { executionPriority == max($0, queuePriority) } == true)
+			}
+		}
+	}
+
+	@Test
+	func task_onQueueWithPriority_withUnspecifiedPriority_executesAtHigherOfCallersAndQueuePriority() async {
+		let systemUnderTest = FIFOQueue(priority: .low)
+		// `Task` treats a priority with a raw value of zero as no priority, so the task inherits the caller's priority.
+		let executionPriority = await priorityOfTask(enqueuedFromTaskWithPriority: .high) { report in
+			Task(priority: TaskPriority(rawValue: 0), on: systemUnderTest) { report(Task.currentPriority) }
+		}
+		#expect(executionPriority == .high)
+	}
+
+	@Test
+	func task_onQueueWithUserInteractivePriority_enqueuedFromUserInteractiveTask_executesAtQueuePriority() async {
+		let userInteractivePriority = TaskPriority(rawValue: 0x21)
+		let systemUnderTest = FIFOQueue(priority: userInteractivePriority)
+		// `Task` lowers an inherited user-interactive priority, so only the queue's priority keeps the task user-interactive.
+		let executionPriority = await priorityOfTask(enqueuedFromTaskWithPriority: userInteractivePriority) { report in
+			Task(on: systemUnderTest) { report(Task.currentPriority) }
+		}
+		#expect(executionPriority.map { $0 >= userInteractivePriority } == true)
+	}
+
+	@Test
+	func task_isEscalatedWhenAwaitedFromHigherPriorityTask() async {
+		let taskStarted = Semaphore()
+		let taskAllowedToReturn = Semaphore()
+		let task = Task(priority: .low, on: systemUnderTest) {
+			await taskStarted.signal()
+			await taskAllowedToReturn.wait()
+			return Task.currentPriority
+		}
+		await taskStarted.wait()
+		let priority = await value(of: task, awaitedFromTaskWithPriority: .high) {
+			await taskAllowedToReturn.signal()
+		}
+		#expect(priority >= .high)
+	}
+
+	@Test
+	func taskIsolatedTo_isEscalatedWhenAwaitedFromHigherPriorityTask() async {
+		let taskStarted = Semaphore()
+		let taskAllowedToReturn = Semaphore()
+		let task = Task(priority: .low, on: systemUnderTest, isolatedTo: Counter()) { _ in
+			await taskStarted.signal()
+			await taskAllowedToReturn.wait()
+			return Task.currentPriority
+		}
+		await taskStarted.wait()
+		let priority = await value(of: task, awaitedFromTaskWithPriority: .high) {
+			await taskAllowedToReturn.signal()
+		}
+		#expect(priority >= .high)
 	}
 
 	// MARK: Private

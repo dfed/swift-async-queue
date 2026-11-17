@@ -44,7 +44,7 @@ actor Semaphore {
 		return true
 	}
 
-	/// Increment the counting semaphore. If the previous value was less than zero, this function resumes a waiting thread before returning.
+	/// Increment the counting semaphore. If the resulting value is greater than or equal to zero, this function resumes every waiting task before returning.
 	func signal() {
 		count += 1
 		guard !isWaiting else {
