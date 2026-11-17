@@ -7,18 +7,9 @@
 
 When you create several tasks from synchronous or `nonisolated` code, Swift doesn't guarantee the order in which they run, even if they all call the same actor. The queues in this library run tasks in the order you enqueue them.
 
-## Choosing a queue
+## Task ordering in Swift concurrency
 
-To enqueue a task, call `Task(on:)` with a queue instead of calling `Task.init`. The closure you pass is the task's *operation*: the code that the task runs. You can call `Task(on:)` from synchronous code. Like `Task.init`, it creates a new task and returns it, so you can wait for its value or cancel it.
-
-- Use a `FIFOQueue` when each task must finish before the next task starts.
-- Use an `ActorQueue` when tasks must start in order on your own actor. The next task can start while an earlier one is suspended.
-- Use `MainActor.queue` when tasks must start in order on the main actor.
-- Use a `CancellableQueue` around a `FIFOQueue` or an `ActorQueue` when you need to cancel all of its tasks at once.
-
-## Running tasks in order
-
-Consider the following test:
+The following test creates 100 tasks in a loop. Each task calls the same actor and expects to be the next one to run:
 
 ```swift
 @Test
@@ -47,11 +38,20 @@ func actorTaskOrdering() async {
 }
 ```
 
-In the code above, the loop creates the tasks in order, but the tasks can run on the actor in a different order. When they do, the expectation fails. An [actor](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/#Actors) runs only one piece of code at a time, but it doesn't promise to run tasks in the order you create them. The sections below show how each queue runs tasks in the order you enqueue them.
+In the code above, the loop creates the tasks in order, but the tasks can run on the actor in a different order. When they do, the expectation fails. An [actor](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/#Actors) runs only one piece of code at a time, but it doesn't promise to run tasks in the order you create them. The queues in this library do.
+
+## Choosing a queue
+
+To enqueue a task, call `Task(on:)` with a queue instead of `Task.init`. Like `Task.init`, it works from synchronous code and returns the new task, so you can await its value or cancel it.
+
+- Use a `FIFOQueue` when each task must finish before the next task starts.
+- Use an `ActorQueue` when tasks must start in order on your own actor. The next task can start while an earlier one is suspended.
+- Use `MainActor.queue` when tasks must start in order on the main actor.
+- Use a `CancellableQueue` around a `FIFOQueue` or an `ActorQueue` when you need to cancel all of its tasks at once.
 
 ## Running tasks one at a time with `FIFOQueue`
 
-A `FIFOQueue` runs one task at a time, in the order you enqueue them: first in, first out. Each task waits until every task enqueued before it has finished. A task that is suspended at an `await` hasn't finished, so the next task keeps waiting. As a result, tasks start and finish in the order you enqueue them.
+A `FIFOQueue` runs one task at a time, first in, first out. Each task waits until every task enqueued before it has finished, including a task that is suspended at an `await`. So tasks start and finish in the order you enqueue them, much like work on a serial `DispatchQueue`.
 
 For example, here's how you might use a `FIFOQueue` so that the counter counts in order:
 
@@ -88,13 +88,13 @@ func fIFOQueueOrdering() async {
 }
 ```
 
-In the code above, `incrementAndAssertCountEquals(_:)` is `nonisolated`, so synchronous code can call it. The operation runs with the same actor isolation as the code that enqueues it, like a task you create with `Task.init`. Here, that code is `nonisolated`, so the operation uses `await` to call the actor.
+In the code above, `incrementAndAssertCountEquals(_:)` is `nonisolated`, so synchronous code can call it. The closure you pass to `Task(on:)` is the task's *operation*. Here, the operation doesn't run on the actor, so it uses `await` to call `increment()` and read `count`.
 
 Keep these points in mind when you use a `FIFOQueue`:
 
-- To run the operation on an actor, call `Task(on:isolatedTo:)` with that actor. The operation receives the actor, so it can use the actor's state without `await`.
-- If the next task should start while one is suspended at an `await`, use an `ActorQueue`.
 - Inside a task on a `FIFOQueue`, don't await another task that you enqueue on the same queue. The new task waits for the current task to finish, and the current task waits for the new one, so both wait forever.
+- If the next task should start while one is suspended at an `await`, use an `ActorQueue`.
+- To run the operation on an actor, call `Task(on:isolatedTo:)` with that actor. The operation receives the actor, so it can use the actor's state without `await`.
 
 ## Running tasks on your actor with `ActorQueue`
 
@@ -102,7 +102,7 @@ An `ActorQueue` runs tasks on your own actor, and the tasks start in the order y
 
 - When the task suspends at an `await`, the next task can start.
 - Between [suspension points](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/#Defining-and-Calling-Asynchronous-Functions), the task runs without interruption from other code on the actor.
-- A task can enqueue another task on the same queue and await its value.
+- A task can enqueue another task on the same queue and await its value. Unlike on a `FIFOQueue`, this doesn't wait forever.
 
 Each `ActorQueue` belongs to one actor. To set one up:
 
@@ -146,8 +146,6 @@ func actorQueueOrdering() async {
 ```
 
 In the code above, the operation receives the actor as `myself`. The operation runs on the actor, so it reads and changes `count` without `await`.
-
-To wait for an operation's result, await the task's value. For example, a method of `Counter` could read the count with `let count = await Task(on: queue) { myself in myself.count }.value`.
 
 ## Running tasks on the main actor with `MainActor.queue`
 
@@ -197,7 +195,6 @@ A `CancellableQueue` wraps a `FIFOQueue` or an `ActorQueue` and lets you cancel 
 
 - Calling `cancelTasks()` cancels every unfinished task that you enqueued on the `CancellableQueue`, whether it's running or waiting.
 - Tasks that already finished aren't affected. Tasks you enqueue afterward run as usual.
-- [Cancellation](#cancellation) is cooperative, so the operation should check for cancellation, as `loadImage(from:)` does below.
 
 ```swift
 @Test
@@ -252,7 +249,7 @@ func cancellableQueueExample() async {
 }
 ```
 
-In the code above, each load calls `Task.checkCancellation()` after it fetches the image. A cancelled load throws `CancellationError` there, so it doesn't process the image.
+In the code above, each load calls `Task.checkCancellation()` after it fetches the image. A cancelled load throws `CancellationError` there, so it doesn't process the image. Cancelled tasks still run in order; see [Cancellation](#cancellation).
 
 A `CancellableQueue` can also wrap a `FIFOQueue`:
 
@@ -265,11 +262,30 @@ Task(on: cancellableQueue) {
 }
 ```
 
+## Task-local values, priority, and cancellation
+
+`Task(on:)` creates a new [unstructured task](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/#Unstructured-Concurrency), as `Task.init` does, and your operation runs in that task. So the task behaves like a task you create with `Task.init`: for example, your operation sees the [task-local values](https://developer.apple.com/documentation/swift/tasklocal) of the code that enqueues it.
+
+### Priority
+
+- A task runs at the priority you pass to `Task(on:)`. If you pass `nil`, it runs at the priority of the code that enqueues it, as with `Task.init`.
+- `FIFOQueue(priority:)` and `ActorQueue(priority:)` give each of the queue's tasks at least that priority. A task that would run at a lower priority runs at the queue's priority instead. `MainActor.queue` has no priority of its own.
+- On Linux, and on macOS 26, iOS 26, tvOS 26, watchOS 26, and visionOS 26 or later, a task waiting in a queue raises the tasks ahead of it to its own priority. On earlier releases, they keep their own priority.
+
+### Cancellation
+
+Cancellation is [cooperative](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/#Task-Cancellation), as it is for any Swift task:
+
+- Calling a task's `cancel()` method, or calling `cancelTasks()` on the `CancellableQueue` you enqueued it on, marks the task as cancelled right away.
+- The task keeps its place in the queue. Its operation still runs, in the same order as if you hadn't cancelled it.
+- The operation decides how to respond. It can check `Task.isCancelled`, or call `Task.checkCancellation()` to throw a `CancellationError`.
+- An operation that doesn't check for cancellation runs to completion, and the tasks behind it wait for it as usual.
+
 ## Checking whether a queue is idle
 
 A `FIFOQueue` and an `ActorQueue` each have an `isIdle` property:
 
-- A `FIFOQueue` is idle when every task you enqueued on it has finished. A task that is suspended at an `await` hasn't finished. Neither has a cancelled task: it keeps its place, and its operation still runs.
+- A `FIFOQueue` is idle when every task you enqueued on it has finished. A task that is suspended at an `await` hasn't finished.
 - An `ActorQueue` is idle when every task you enqueued on it has started running on the actor. The operations of its tasks might not have finished.
 
 The value can change as soon as you read it: a task you enqueue afterward makes the queue busy again.
@@ -298,34 +314,9 @@ actor DocumentStore {
 }
 ```
 
-In the code above, the actor enqueues every task and reads `isIdle`, and it doesn't suspend between reading `isIdle` and removing the queue. So no task can be enqueued in between. A document you save after its queue is removed gets a new queue, and its task runs after the tasks of the removed queue, which have all finished.
+In the code above, the actor both enqueues the tasks and reads `isIdle`, so no task can be enqueued between the check and the removal.
 
 `CancellableQueue` has no `isIdle` property. To check one, keep a reference to the queue it wraps, and read that queue's `isIdle`.
-
-## Task-local values, priority, and cancellation
-
-`Task(on:)` creates a new [unstructured task](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/#Unstructured-Concurrency), as `Task.init` does, and your operation runs in that task. So the task behaves like a task you create with `Task.init`.
-
-### Task-local values
-
-Your operation sees the [task-local values](https://developer.apple.com/documentation/swift/tasklocal) of the code that enqueues it, as with `Task.init`.
-
-### Priority
-
-- A task runs at the priority you pass to `Task(on:)`. If you pass `nil`, it runs at the priority of the code that enqueues it, as with `Task.init`.
-- `FIFOQueue(priority:)` and `ActorQueue(priority:)` give each of the queue's tasks at least that priority. A task that would run at a lower priority runs at the queue's priority instead. `MainActor.queue` has no priority of its own.
-- When a higher-priority task awaits a task's value, Swift raises, or *escalates*, that task's priority, as it does for any task.
-- On Linux, and on macOS 26, iOS 26, tvOS 26, watchOS 26, and visionOS 26 or later, a task that waits in a queue also raises the priority of the tasks ahead of it to its own priority. That way, the tasks ahead of a high-priority task don't run at a lower priority while it waits. On earlier releases, the tasks ahead keep their own priority.
-- A task keeps a raised priority until it finishes.
-
-### Cancellation
-
-Cancellation is [cooperative](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/#Task-Cancellation), as it is for any Swift task:
-
-- Calling a task's `cancel()` method, or calling `cancelTasks()` on the `CancellableQueue` you enqueued it on, marks the task as cancelled right away.
-- The task keeps its place in the queue. Its operation still runs, in the same order as if you hadn't cancelled it.
-- The operation decides how to respond. It can check `Task.isCancelled`, or call `Task.checkCancellation()` to throw a `CancellationError`.
-- An operation that doesn't check for cancellation runs to completion, and the tasks behind it wait for it as usual.
 
 ## Installation
 
