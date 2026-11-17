@@ -239,7 +239,7 @@ To install swift-async-queue in your project with [Swift Package Manager](https:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/dfed/swift-async-queue", from: "1.0.0"),
+    .package(url: "https://github.com/dfed/swift-async-queue", from: "2.0.0"),
 ]
 ```
 

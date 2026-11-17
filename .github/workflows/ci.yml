@@ -14,18 +14,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  spm-16:
-    name: Build Xcode 26
-    runs-on: macos-15
+  # Job names omit tool and OS versions so that branch protection's required checks survive toolchain updates.
+  spm:
+    name: Build Xcode
+    # The `xcode-27` image ships Xcode 27.2 with its simulator runtimes installed.
+    runs-on: xcode-27
     # A test that deadlocks keeps the test run from ending, so stop the
     # job after 50 minutes rather than at GitHub's six-hour default.
     timeout-minutes: 50
     strategy:
       matrix:
         platforms: [
-          'iOS_18,watchOS_11',
-          'macOS_26,tvOS_18',
-          'visionOS_2'
+          'iOS,watchOS',
+          'macOS,tvOS',
+          'visionOS'
         ]
       fail-fast: false
     permissions:
@@ -34,31 +36,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v7
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_26.1.1.app/Contents/Developer
-      - name: Download visionOS
-        if: matrix.platforms == 'visionOS_2'
-        run: |
-          sudo xcodebuild -runFirstLaunch
-          sudo xcrun simctl list
-          sudo xcodebuild -downloadPlatform visionOS
-      - name: Download iOS
-        if: matrix.platforms == 'iOS_18,watchOS_11'
-        run: |
-          sudo xcodebuild -runFirstLaunch
-          sudo xcrun simctl list
-          sudo xcodebuild -downloadPlatform iOS -buildVersion 22F77
-      - name: Download watchOS
-        if: matrix.platforms == 'iOS_18,watchOS_11'
-        run: |
-          sudo xcodebuild -runFirstLaunch
-          sudo xcrun simctl list
-          sudo xcodebuild -downloadPlatform watchOS -buildVersion 22T572
-      - name: Download tvOS
-        if: matrix.platforms == 'macOS_26,tvOS_18'
-        run: |
-          sudo xcodebuild -runFirstLaunch
-          sudo xcrun simctl list
-          sudo xcodebuild -downloadPlatform tvOS -buildVersion 22L572
+        run: sudo xcode-select --switch /Applications/Xcode_27.2.app/Contents/Developer
       - name: Build and Test Framework
         run: Scripts/build.swift ${{ matrix.platforms }}
       - name: Prepare Coverage Reports
@@ -69,9 +47,9 @@ jobs:
         with:
           fail_ci_if_error: true
           verbose: true
-  spm-16-swift:
-    name: Swift Build Xcode 26
-    runs-on: macos-15
+  spm-swift:
+    name: Swift Build Xcode
+    runs-on: xcode-27
     # A test that deadlocks keeps the test run from ending, so stop the
     # job after 15 minutes rather than at GitHub's six-hour default.
     timeout-minutes: 15
@@ -81,13 +59,13 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v7
       - name: Select Xcode Version
-        run: sudo xcode-select --switch /Applications/Xcode_26.1.1.app/Contents/Developer
+        run: sudo xcode-select --switch /Applications/Xcode_27.2.app/Contents/Developer
       - name: Build and Test Framework
         run: xcrun swift test -c release -Xswiftc -enable-testing
-  linux-6-2:
-    name: "Build and Test on Linux Swift 6.2"
+  linux:
+    name: "Build and Test on Linux"
     runs-on: ubuntu-24.04
-    container: swift:6.2
+    container: swift:6.4
     # A test that deadlocks keeps the test run from ending, so stop the
     # job after 15 minutes rather than at GitHub's six-hour default.
     timeout-minutes: 15
@@ -115,7 +93,8 @@ jobs:
       # test binary fails the step with llvm-objdump's own error.
       - name: Check Atomic Coverage Counters
         run: |
-          llvm-objdump -d --no-show-raw-insn .build/x86_64-unknown-linux-gnu/release/swift-async-queuePackageTests.xctest > .build/disassembly.txt
+          BIN_PATH=$(swift build -c release --show-bin-path)
+          llvm-objdump -d --no-show-raw-insn "$BIN_PATH/AsyncQueueTests.so" > .build/disassembly.txt
           awk '
             /<__profc_/ && $2 != "leaq" { if (previous == "lock") atomic++; else plain++ }
             { previous = $2 }
@@ -126,8 +105,10 @@ jobs:
               exit (plain > 0 || atomic == 0)
             }' .build/disassembly.txt
       - name: Prepare Coverage Reports
+        # Swift 6.4 builds with Swift Build, which links the tests into `AsyncQueueTests.so`.
         run: |
-          llvm-cov export -format="lcov" .build/x86_64-unknown-linux-gnu/release/swift-async-queuePackageTests.xctest -instr-profile .build/x86_64-unknown-linux-gnu/release/codecov/default.profdata > coverage.lcov
+          BIN_PATH=$(swift build -c release --show-bin-path)
+          llvm-cov export -format="lcov" "$BIN_PATH/AsyncQueueTests.so" -instr-profile "$BIN_PATH/codecov/default.profdata" > coverage.lcov
       - name: Install curl for Codecov
         run: |
           apt-get update
@@ -171,7 +152,7 @@ jobs:
   lint-swift:
     name: Lint Swift
     runs-on: ubuntu-latest
-    container: swift:6.2
+    container: swift:6.4
     permissions:
       contents: read
     steps:
@@ -183,6 +164,6 @@ jobs:
         uses: actions/cache@v6
         with:
           path: CLI/.build
-          key: swiftformat-${{ runner.os }}-swift-6.2-${{ hashFiles('CLI/Package.resolved') }}
+          key: swiftformat-${{ runner.os }}-swift-6.4-${{ hashFiles('CLI/Package.resolved') }}
       - name: Lint Swift
         run: swift run --package-path CLI swiftformat . --lint

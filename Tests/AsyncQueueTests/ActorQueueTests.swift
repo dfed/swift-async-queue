@@ -40,7 +40,7 @@ struct ActorQueueTests {
 	func adoptExecutionContext_doesNotRetainActor() {
 		let systemUnderTest = ActorQueue<Counter>()
 		var counter: Counter? = Counter()
-		weak var weakCounter = counter
+		weak let weakCounter = counter
 		systemUnderTest.adoptExecutionContext(of: counter!)
 		counter = nil
 		#expect(weakCounter == nil)
@@ -50,7 +50,7 @@ struct ActorQueueTests {
 	func task_retainsAdoptedActorUntilEnqueuedTasksComplete() async {
 		let systemUnderTest = ActorQueue<Counter>()
 		var counter: Counter? = Counter()
-		weak var weakCounter = counter
+		weak let weakCounter = counter
 		systemUnderTest.adoptExecutionContext(of: counter!)
 
 		let semaphore = Semaphore()
@@ -67,7 +67,7 @@ struct ActorQueueTests {
 	func throwingTask_retainsAdoptedActorUntilEnqueuedTasksComplete() async {
 		let systemUnderTest = ActorQueue<Counter>()
 		var counter: Counter? = Counter()
-		weak var weakCounter = counter
+		weak let weakCounter = counter
 		systemUnderTest.adoptExecutionContext(of: counter!)
 
 		let semaphore = Semaphore()
@@ -249,7 +249,7 @@ struct ActorQueueTests {
 			await semaphore.wait()
 			counter.incrementAndExpectCount(equals: 1)
 		}
-		weak var queue = systemUnderTest
+		weak let queue = systemUnderTest
 		// Nil out our reference to the queue to show that the enqueued tasks will still complete
 		systemUnderTest = nil
 		#expect(queue == nil)
@@ -273,7 +273,7 @@ struct ActorQueueTests {
 			await semaphore.wait()
 			counter.incrementAndExpectCount(equals: 1)
 		}
-		weak var queue = systemUnderTest
+		weak let queue = systemUnderTest
 		// Nil out our reference to the queue to show that the enqueued tasks will still complete
 		systemUnderTest = nil
 		#expect(queue == nil)

@@ -275,7 +275,7 @@ struct FIFOQueueTests {
 			// This async task should not execute until the semaphore is released.
 			await counter.incrementAndExpectCount(equals: 2)
 		}
-		weak var queue = systemUnderTest
+		weak let queue = systemUnderTest
 		// Nil out our reference to the queue to show that the enqueued tasks will still complete
 		systemUnderTest = nil
 		#expect(queue == nil)
@@ -300,7 +300,7 @@ struct FIFOQueueTests {
 			// This async task should not execute until the semaphore is released.
 			counter.incrementAndExpectCount(equals: 2)
 		}
-		weak var queue = systemUnderTest
+		weak let queue = systemUnderTest
 		// Nil out our reference to the queue to show that the enqueued tasks will still complete
 		systemUnderTest = nil
 		#expect(queue == nil)
@@ -327,7 +327,7 @@ struct FIFOQueueTests {
 			await counter.incrementAndExpectCount(equals: 2)
 			try doWork()
 		}
-		weak var queue = systemUnderTest
+		weak let queue = systemUnderTest
 		// Nil out our reference to the queue to show that the enqueued tasks will still complete
 		systemUnderTest = nil
 		#expect(queue == nil)
@@ -354,7 +354,7 @@ struct FIFOQueueTests {
 			counter.incrementAndExpectCount(equals: 2)
 			try doWork()
 		}
-		weak var queue = systemUnderTest
+		weak let queue = systemUnderTest
 		// Nil out our reference to the queue to show that the enqueued tasks will still complete
 		systemUnderTest = nil
 		#expect(queue == nil)

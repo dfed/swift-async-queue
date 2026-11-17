@@ -20,4 +20,4 @@
 --disable blankLineAfterSwitchCase
 
 # global
---swiftversion 6.2
+--swiftversion 6.4
