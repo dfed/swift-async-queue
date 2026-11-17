@@ -41,6 +41,11 @@ final class ManualTaskExecutor: TaskExecutor {
 	/// Yields once each time a job is enqueued.
 	let enqueuedJobs: AsyncStream<Void>
 
+	/// The priority of each job enqueued so far, in the order in which the jobs were enqueued.
+	var enqueuedJobPriorities: [TaskPriority] {
+		state.withLock { $0.enqueuedJobs.map(\.priority) }
+	}
+
 	/// Whether each job enqueued so far was enqueued from the main dispatch queue, in the order in which the jobs were enqueued.
 	var wasEachJobEnqueuedOnMainQueue: [Bool] {
 		state.withLock { $0.enqueuedJobs.map(\.wasEnqueuedOnMainQueue) }
@@ -54,6 +59,7 @@ final class ManualTaskExecutor: TaskExecutor {
 		defer { retainedSelf.release() }
 		let job = UnownedJob(job)
 		let enqueuedJob = EnqueuedJob(
+			priority: TaskPriority(rawValue: job.priority.rawValue),
 			wasEnqueuedOnMainQueue: Self.mainQueueKey.withLock { DispatchQueue.getSpecific(key: $0) } == true,
 		)
 		state.withLock { state in
@@ -75,9 +81,24 @@ final class ManualTaskExecutor: TaskExecutor {
 		}
 	}
 
+	/// Runs the pending jobs each time a job is enqueued, until `isDone` returns `true`.
+	///
+	/// Another thread may enqueue a job for a task that prefers this executor at any time, and the task may need more than
+	/// one job to reach the point that the test waits for. Running the executor after each job is enqueued keeps the test
+	/// from missing any of them. `isDone` is checked after the executor runs, so it should become `true` while a job on this
+	/// executor runs. If it never does, this method suspends forever, so a regression hangs the test.
+	func runUntil(_ isDone: () -> Bool) async {
+		var enqueuedJobs = enqueuedJobs.makeAsyncIterator()
+		while !isDone() {
+			await enqueuedJobs.next()
+			runUntilIdle()
+		}
+	}
+
 	// MARK: Private
 
 	private struct EnqueuedJob {
+		let priority: TaskPriority
 		let wasEnqueuedOnMainQueue: Bool
 	}
 
@@ -162,6 +183,30 @@ func probeNextTurn(of turns: Turns) -> @Sendable () -> Bool {
 	return {
 		executor.runUntilIdle()
 		return hasTurnBegun.withLock(\.self)
+	}
+}
+
+/// Reserves the next turn of `turns` for a task with the given priority, and runs the task until it waits for its turn.
+///
+/// A task that begins waiting for its turn escalates the task holding the current turn before it suspends,
+/// so that escalation has happened once this function returns. The task runs only when a test runs it.
+/// - Returns: A closure that waits for the turn before the task's turn to end, and then runs the task until it completes.
+func runTaskWaitingForNextTurn(of turns: Turns, withPriority priority: TaskPriority) -> () async -> Void {
+	let executor = ManualTaskExecutor()
+	let turn = turns.reserve()
+	let task = Task(executorPreference: executor, priority: priority) {
+		await turn.begin()
+		turn.end()
+	}
+	turn.register(task)
+	executor.runUntilIdle()
+	return {
+		var enqueuedJobs = executor.enqueuedJobs.makeAsyncIterator()
+		// Skip the job that started the task, and wait for the job that resumes it once the turn before its turn ends.
+		await enqueuedJobs.next()
+		await enqueuedJobs.next()
+		executor.runUntilIdle()
+		await task.value
 	}
 }
 

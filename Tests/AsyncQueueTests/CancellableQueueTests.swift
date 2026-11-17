@@ -20,6 +20,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import Dispatch
+import Synchronization
 import Testing
 
 @testable import AsyncQueue
@@ -697,6 +699,81 @@ struct CancellableQueueTests {
 		systemUnderTest.cancelTasks()
 
 		#expect(!task.isCancelled)
+	}
+
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
+	func cancelTasks_fifoQueue_whileTaskWaitingForItsTurnIsEscalated_escalatesTaskHoldingTurnWithoutWaitingForCancellationHandler() async {
+		let fifoQueue = FIFOQueue()
+		let systemUnderTest = CancellableQueue(underlyingQueue: fifoQueue)
+		let executor = ManualTaskExecutor()
+		var enqueuedJobs = executor.enqueuedJobs.makeAsyncIterator()
+		let handlerRunning = DispatchSemaphore(value: 0)
+		let waitingTaskEscalated = DispatchSemaphore(value: 0)
+		let firstTaskAllowedToContinue = Semaphore()
+		let reportedPriority = Mutex<TaskPriority?>(nil)
+		let hasWaitingTaskFinished = Mutex(false)
+		// Never await this task: awaiting it would escalate it without the queue's help.
+		Task(priority: .low, on: systemUnderTest) {
+			// Wait on the executor, so that the test runs this task until it waits and knows that it is not running.
+			_ = await withTaskExecutorPreference(executor) {
+				await withTaskCancellationHandler {
+					// Wait for the test rather than for cancellation, so that cancelling this task does not resume it while
+					// its cancellation handler holds its status lock.
+					await firstTaskAllowedToContinue.wait()
+				} onCancel: {
+					// The runtime holds this task's status lock while it runs this handler, and escalating this task takes
+					// that lock. Hold the lock until escalating the waiting task has returned.
+					handlerRunning.signal()
+					waitingTaskEscalated.wait()
+				}
+			}
+			await suspendUntilEscalated(to: .high)
+			let priority = Task.currentPriority
+			reportedPriority.withLock { $0 = priority }
+		}
+		// Run the first task, once it moves to the executor, until it waits for the test. The test is done with this iterator
+		// before `runUntil(_:)` makes its own. The stream keeps each job enqueued in between for that iterator, which at most
+		// makes `runUntil(_:)` run the executor when no job is pending.
+		await enqueuedJobs.next()
+		executor.runUntilIdle()
+		// Reserve the next turn for a task that runs only when this test runs it, and run it until it waits for its turn.
+		let turn = fifoQueue.turns.reserve()
+		let waitingTask = Task(executorPreference: executor, priority: .low) {
+			await turn.begin()
+			turn.end()
+			hasWaitingTaskFinished.withLock { $0 = true }
+		}
+		turn.register(waitingTask)
+		// Neither task is running once this call returns, so cancelling the first task never makes it wait for its own
+		// status lock.
+		executor.runUntilIdle()
+		await withUnsafeContinuation { continuation in
+			// Escalate the waiting task on a thread of its own, and only then cancel the queue's tasks, so that nothing waits
+			// for a thread from the cooperative thread pool while the first task's cancellation handler holds the first
+			// task's status lock. A thread from the pool may wait for that lock for a moment, but the thread that holds it
+			// never needs the pool.
+			DispatchQueue(label: "escalateWaitingTask").async {
+				handlerRunning.wait()
+				// Only the waiting task's escalation handler can deliver this escalation. If the handler escalated the first
+				// task before returning, it would wait for the first task's status lock, which the first task's cancellation
+				// handler holds until this call returns, and this test would never finish.
+				waitingTask.escalatePriority(to: .high)
+				waitingTaskEscalated.signal()
+				continuation.resume()
+			}
+			// Cancel the queue's tasks on a thread of their own, since the first task's cancellation handler blocks that
+			// thread.
+			DispatchQueue(label: "cancelTasks").async {
+				systemUnderTest.cancelTasks()
+			}
+		}
+		await firstTaskAllowedToContinue.signal()
+		// Run the first task until it leaves the executor, and the waiting task once the first task's turn ends. The first
+		// task reports its priority before its turn ends.
+		await executor.runUntil { hasWaitingTaskFinished.withLock(\.self) }
+		let priority = reportedPriority.withLock(\.self)
+		#expect(priority.map { $0 >= .high } == true)
 	}
 
 	@Test
