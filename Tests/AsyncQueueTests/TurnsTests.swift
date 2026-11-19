@@ -194,14 +194,48 @@ struct TurnsTests {
 			priorityAfterTurnBegan.withLock { $0 = Task.currentPriority }
 			firstTurn.end()
 		}
-		// The task has not begun its turn, so registering it leaves the escalation to the task.
+		// Registering the task escalates it from a new task, which may not run before the task begins its turn.
 		firstTurn.register(firstTask)
-		// Run the first task, which escalates itself as its turn begins, and then the waiting task, which takes its turn
-		// once the first turn ends.
+		// Run the first task, which escalates itself as its turn begins whether or not that new task has run, and then
+		// the waiting task, which takes its turn once the first turn ends.
 		executor.runUntilIdle()
 		await firstTask.value
 		await waitingTask.value
 		#expect(priorityAfterTurnBegan.withLock(\.self).map { $0 >= .high } == true)
+	}
+
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
+	func register_beforeTurnBegins_afterHigherPriorityTaskBeginsWaiting_escalatesRegisteredTaskBeforeItsTurnBegins() async {
+		let systemUnderTest = Turns()
+		let executor = ManualTaskExecutor()
+		let firstTurn = systemUnderTest.reserve()
+		let secondTurn = systemUnderTest.reserve()
+		let waitingTask = Task(executorPreference: executor, priority: .high) {
+			await secondTurn.begin()
+			secondTurn.end()
+		}
+		secondTurn.register(waitingTask)
+		// Run the waiting task until it waits for its turn. It asks to escalate the task holding the first turn,
+		// which is not registered yet.
+		executor.runUntilIdle()
+		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+		// Registered for the first turn in place of the task that takes it, so that only registering can escalate it.
+		// Never await this task before it reports its priority: awaiting it would escalate it without the turns' help.
+		let registeredTask = Task(priority: .low) {
+			await suspendUntilEscalated(to: .high)
+			prioritiesContinuation.yield(Task.currentPriority)
+		}
+		firstTurn.register(registeredTask)
+		// The registered task reports its priority only once it is escalated, and the first turn has not begun.
+		var prioritiesIterator = priorities.makeAsyncIterator()
+		let priority = await prioritiesIterator.next()
+		await firstTurn.begin()
+		firstTurn.end()
+		executor.runUntilIdle()
+		await registeredTask.value
+		await waitingTask.value
+		#expect(priority.map { $0 >= .high } == true)
 	}
 
 	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
@@ -312,9 +346,10 @@ struct TurnsTests {
 			priorityAfterTurnBegan.withLock { $0 = Task.currentPriority }
 			firstTurn.end()
 		}
-		// The task has not begun its turn, so registering it leaves the escalations to the task.
+		// Registering the task escalates it from a new task, which may not run before the task begins its turn.
 		firstTurn.register(firstTask)
-		// Run the first task, which escalates itself as its turn begins, and then the waiting tasks.
+		// Run the first task, which escalates itself as its turn begins whether or not that new task has run, and then
+		// the waiting tasks.
 		executor.runUntilIdle()
 		await firstTask.value
 		await higherPriorityTask.value
