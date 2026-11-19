@@ -211,14 +211,6 @@ struct TurnsTests {
 		let executor = ManualTaskExecutor()
 		let firstTurn = systemUnderTest.reserve()
 		let secondTurn = systemUnderTest.reserve()
-		let waitingTask = Task(executorPreference: executor, priority: .high) {
-			await secondTurn.begin()
-			secondTurn.end()
-		}
-		secondTurn.register(waitingTask)
-		// Run the waiting task until it waits for its turn. It asks to escalate the task holding the first turn,
-		// which is not registered yet.
-		executor.runUntilIdle()
 		let (turnBegan, turnBeganContinuation) = AsyncStream<Void>.makeStream()
 		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
 		// Never await this task before it reports its priority: awaiting it would escalate it without the turns' help.
@@ -233,6 +225,14 @@ struct TurnsTests {
 		}
 		var turnBeganIterator = turnBegan.makeAsyncIterator()
 		await turnBeganIterator.next()
+		let waitingTask = Task(executorPreference: executor, priority: .high) {
+			await secondTurn.begin()
+			secondTurn.end()
+		}
+		secondTurn.register(waitingTask)
+		// Only now run a higher-priority task until it waits for its turn. It asks to escalate the task holding the first
+		// turn, which has begun its turn but is not registered yet.
+		executor.runUntilIdle()
 		// The task began its turn before it was registered, so registering it applies the escalation that the waiting
 		// task asked for, from a new task.
 		firstTurn.register(firstTask)
@@ -329,14 +329,6 @@ struct TurnsTests {
 		let executor = ManualTaskExecutor()
 		let firstTurn = systemUnderTest.reserve()
 		let secondTurn = systemUnderTest.reserve()
-		let higherPriorityTask = Task(executorPreference: executor, priority: .high) {
-			await secondTurn.begin()
-			secondTurn.end()
-		}
-		secondTurn.register(higherPriorityTask)
-		// Run the waiting task until it waits for its turn. It asks to escalate the task holding the first turn,
-		// which is not registered yet.
-		executor.runUntilIdle()
 		let (handlerInstalled, handlerInstalledContinuation) = AsyncStream<Void>.makeStream()
 		let firstTaskAllowedToReport = Semaphore()
 		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
@@ -349,6 +341,14 @@ struct TurnsTests {
 		)
 		var handlerInstalledIterator = handlerInstalled.makeAsyncIterator()
 		await handlerInstalledIterator.next()
+		let higherPriorityTask = Task(executorPreference: executor, priority: .high) {
+			await secondTurn.begin()
+			secondTurn.end()
+		}
+		secondTurn.register(higherPriorityTask)
+		// Only now run a higher-priority task until it waits for its turn. It asks to escalate the task holding the first
+		// turn, which has begun its turn but is not registered yet.
+		executor.runUntilIdle()
 		// Registering the task applies the escalation that the waiting task asked for, from a new task, which runs the
 		// task's handler.
 		firstTurn.register(firstTask)
@@ -367,14 +367,6 @@ struct TurnsTests {
 		let executor = ManualTaskExecutor()
 		let firstTurn = systemUnderTest.reserve()
 		let secondTurn = systemUnderTest.reserve()
-		let higherPriorityTask = Task(executorPreference: executor, priority: .high) {
-			await secondTurn.begin()
-			secondTurn.end()
-		}
-		secondTurn.register(higherPriorityTask)
-		// Run the waiting task until it waits for its turn. It asks to escalate the task holding the first turn,
-		// which is not registered yet.
-		executor.runUntilIdle()
 		// A lock that the code enqueuing a task holds, and that the task's operation takes in its escalation handler.
 		let lock = Mutex(())
 		let (handlerInstalled, handlerInstalledContinuation) = AsyncStream<Void>.makeStream()
@@ -395,6 +387,14 @@ struct TurnsTests {
 		}
 		var handlerInstalledIterator = handlerInstalled.makeAsyncIterator()
 		await handlerInstalledIterator.next()
+		let higherPriorityTask = Task(executorPreference: executor, priority: .high) {
+			await secondTurn.begin()
+			secondTurn.end()
+		}
+		secondTurn.register(higherPriorityTask)
+		// Only now run a higher-priority task until it waits for its turn. It asks to escalate the task holding the first
+		// turn, which has begun its turn but is not registered yet.
+		executor.runUntilIdle()
 		// The task began running before it was registered, as a task enqueued on a queue may. Registering it applies
 		// the escalation that the waiting task asked for. If registering runs the task's escalation handler on this
 		// thread, the handler waits for the lock this thread holds, and this deadlocks.
