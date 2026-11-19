@@ -220,7 +220,10 @@ final class Turns: Sendable {
 		var lastTicket: Ticket?
 		/// The earliest ticket whose turn has not ended, if any.
 		var holder: Ticket?
-		/// The priority to which the holder's task has been escalated on behalf of waiting tasks.
+		/// The priority to which waiting tasks have asked to escalate the holder's task.
+		///
+		/// A holder's task that is not yet registered is not escalated to this priority until its turn begins,
+		/// or, if its turn has already begun, until it is registered.
 		var holderPriority: TaskPriority?
 		/// The number of tasks waiting for their turn, by the raw value of their priority.
 		var waitingTaskCounts = [UInt8: Int]()
@@ -243,8 +246,7 @@ final class Turns: Sendable {
 		mutating func escalateHolder(to priority: TaskPriority) -> (@Sendable () -> Void)? {
 			guard let holder, holderPriority.map({ $0 < priority }) ?? true else { return nil }
 			holderPriority = priority
-			// If the holder's task is not yet registered, the task applies `holderPriority` as its turn begins, or registering
-			// it does if its turn has already begun.
+			// If the holder's task is not yet registered, it is escalated to `holderPriority` later. See `holderPriority`.
 			guard let escalate = holder.escalate else { return nil }
 			return { escalate(priority) }
 		}
