@@ -199,7 +199,7 @@ struct TurnsTests {
 			firstTurn.end()
 			prioritiesContinuation.yield(priority)
 		}
-		// Registering the task applies the escalation that the waiting task asked for, before this call returns.
+		// Registering the task applies the escalation that the waiting task asked for, from a new task.
 		firstTurn.register(firstTask)
 		await firstTaskAllowedToReport.signal()
 		var prioritiesIterator = priorities.makeAsyncIterator()
@@ -283,7 +283,7 @@ struct TurnsTests {
 			firstTurn.end()
 			prioritiesContinuation.yield(priority)
 		}
-		// Registering the task applies the escalation that the waiting tasks asked for, before this call returns.
+		// Registering the task applies the escalation that the waiting tasks asked for, from a new task.
 		firstTurn.register(firstTask)
 		await firstTaskAllowedToReport.signal()
 		var prioritiesIterator = priorities.makeAsyncIterator()
@@ -321,8 +321,8 @@ struct TurnsTests {
 		)
 		var handlerInstalledIterator = handlerInstalled.makeAsyncIterator()
 		await handlerInstalledIterator.next()
-		// Registering the task applies the escalation that the waiting task asked for, which runs the task's handler
-		// before this call returns.
+		// Registering the task applies the escalation that the waiting task asked for, from a new task, which runs the
+		// task's handler.
 		firstTurn.register(firstTask)
 		await firstTaskAllowedToReport.signal()
 		var prioritiesIterator = priorities.makeAsyncIterator()

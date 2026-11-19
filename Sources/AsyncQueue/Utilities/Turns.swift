@@ -141,7 +141,12 @@ final class Turns: Sendable {
 			return state.holder === ticket ? state.holderPriority : nil
 		}
 		if let priority {
-			escalate(priority)
+			// The code that registers a task is the code that enqueues it, which may hold a lock, or the runtime's lock on
+			// another task, that the task's escalation handlers take. Escalating a task runs its escalation handlers on
+			// the escalating thread, so escalate from a new task so that those handlers never run on this thread.
+			Task.detached(priority: priority) {
+				escalate(priority)
+			}
 		}
 	}
 
