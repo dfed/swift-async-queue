@@ -243,7 +243,8 @@ final class Turns: Sendable {
 		mutating func escalateHolder(to priority: TaskPriority) -> (@Sendable () -> Void)? {
 			guard let holder, holderPriority.map({ $0 < priority }) ?? true else { return nil }
 			holderPriority = priority
-			// If the holder's task is not yet registered, registering it applies `holderPriority`.
+			// If the holder's task is not yet registered, the task applies `holderPriority` as its turn begins, or registering
+			// it does if its turn has already begun.
 			guard let escalate = holder.escalate else { return nil }
 			return { escalate(priority) }
 		}
