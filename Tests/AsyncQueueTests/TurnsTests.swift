@@ -188,12 +188,11 @@ struct TurnsTests {
 		// Run the waiting task until it waits for its turn. It asks to escalate the task holding the first turn,
 		// which is not registered yet.
 		executor.runUntilIdle()
-		let firstTaskAllowedToReport = Semaphore()
 		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
 		// Never await this task: awaiting it would escalate it without the turns' help.
 		let firstTask = Task(priority: .low) {
 			await firstTurn.begin()
-			await firstTaskAllowedToReport.wait()
+			await suspendUntilEscalated(to: .high)
 			let priority = Task.currentPriority
 			// End the turn before reporting, so that the waiting task can take its turn once the priority arrives.
 			firstTurn.end()
@@ -201,7 +200,6 @@ struct TurnsTests {
 		}
 		// Registering the task applies the escalation that the waiting task asked for, from a new task.
 		firstTurn.register(firstTask)
-		await firstTaskAllowedToReport.signal()
 		var prioritiesIterator = priorities.makeAsyncIterator()
 		let priority = await prioritiesIterator.next()
 		executor.runUntilIdle()
@@ -272,12 +270,11 @@ struct TurnsTests {
 		thirdTurn.register(lowerPriorityTask)
 		// Run the lower-priority task until it waits for its turn. It asks to escalate the same task to a lower priority.
 		executor.runUntilIdle()
-		let firstTaskAllowedToReport = Semaphore()
 		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
 		// Never await this task: awaiting it would escalate it without the turns' help.
 		let firstTask = Task(priority: .low) {
 			await firstTurn.begin()
-			await firstTaskAllowedToReport.wait()
+			await suspendUntilEscalated(to: .high)
 			let priority = Task.currentPriority
 			// End the turn before reporting, so that the waiting tasks can take their turns once the priority arrives.
 			firstTurn.end()
@@ -285,7 +282,6 @@ struct TurnsTests {
 		}
 		// Registering the task applies the escalation that the waiting tasks asked for, from a new task.
 		firstTurn.register(firstTask)
-		await firstTaskAllowedToReport.signal()
 		var prioritiesIterator = priorities.makeAsyncIterator()
 		let priority = await prioritiesIterator.next()
 		executor.runUntilIdle()
