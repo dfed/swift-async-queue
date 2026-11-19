@@ -334,6 +334,54 @@ struct TurnsTests {
 
 	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
 	@Test
+	func register_whileRegisteringCodeHoldsLockThatTaskEscalationHandlerTakes_escalatesTaskWithoutDeadlocking() async {
+		let systemUnderTest = Turns()
+		let executor = ManualTaskExecutor()
+		let firstTurn = systemUnderTest.reserve()
+		let secondTurn = systemUnderTest.reserve()
+		let higherPriorityTask = Task(executorPreference: executor, priority: .high) {
+			await secondTurn.begin()
+			secondTurn.end()
+		}
+		secondTurn.register(higherPriorityTask)
+		// Run the waiting task until it waits for its turn. It asks to escalate the task holding the first turn,
+		// which is not registered yet.
+		executor.runUntilIdle()
+		// A lock that the code enqueuing a task holds, and that the task's operation takes in its escalation handler.
+		let lock = Mutex(())
+		let (handlerInstalled, handlerInstalledContinuation) = AsyncStream<Void>.makeStream()
+		let (priorities, prioritiesContinuation) = AsyncStream<TaskPriority>.makeStream()
+		// Never await this task: awaiting it would escalate it without the turns' help.
+		let firstTask = Task(priority: .low) {
+			await firstTurn.begin()
+			let priority = await withTaskPriorityEscalationHandler {
+				handlerInstalledContinuation.yield()
+				await suspendUntilEscalated(to: .high)
+				return Task.currentPriority
+			} onPriorityEscalated: { _, _ in
+				lock.withLock { _ in }
+			}
+			// End the turn before reporting, so that the waiting task can take its turn once the priority arrives.
+			firstTurn.end()
+			prioritiesContinuation.yield(priority)
+		}
+		var handlerInstalledIterator = handlerInstalled.makeAsyncIterator()
+		await handlerInstalledIterator.next()
+		// The task began running before it was registered, as a task enqueued on a queue may. Registering it applies
+		// the escalation that the waiting task asked for. If registering runs the task's escalation handler on this
+		// thread, the handler waits for the lock this thread holds, and this deadlocks.
+		lock.withLock { _ in
+			firstTurn.register(firstTask)
+		}
+		var prioritiesIterator = priorities.makeAsyncIterator()
+		let priority = await prioritiesIterator.next()
+		executor.runUntilIdle()
+		await higherPriorityTask.value
+		#expect(priority.map { $0 >= .high } == true)
+	}
+
+	@available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *)
+	@Test
 	func register_afterTurnEnds_doesNotRetainTask() async {
 		let systemUnderTest = Turns()
 		let turn = systemUnderTest.reserve()
