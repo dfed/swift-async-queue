@@ -137,13 +137,17 @@ final class Turns: Sendable {
 				return nil
 			}
 			ticket.escalate = escalate
-			// Waiting tasks may have asked to escalate this ticket's task before it was registered.
-			return state.holder === ticket ? state.holderPriority : nil
+			// Waiting tasks may have asked to escalate this ticket's task before it was registered. A task that has not
+			// begun its turn applies those escalations itself as its turn begins.
+			// A task that has begun its turn and not ended it holds the current turn.
+			guard ticket.hasBegun else { return nil }
+			return state.holderPriority
 		}
 		if let priority {
-			// The code that registers a task is the code that enqueues it, which may hold a lock, or the runtime's lock on
-			// another task, that the task's escalation handlers take. Escalating a task runs its escalation handlers on
-			// the escalating thread, so escalate from a new task so that those handlers never run on this thread.
+			// The task began its turn before it was registered, so its operation may be running. The code that registers
+			// a task is the code that enqueues it, which may hold a lock, or the runtime's lock on another task, that the
+			// operation's escalation handlers take. Escalating a task runs its escalation handlers on the escalating
+			// thread, so escalate from a new task so that those handlers never run on this thread.
 			Task.detached(priority: priority) {
 				escalate(priority)
 			}
@@ -162,10 +166,22 @@ final class Turns: Sendable {
 				await wait(for: previousTicket, as: ticket, recordingPriority: false)
 			}
 		}
-		state.withLock { state in
+		let priority = state.withLock { state -> TaskPriority? in
 			if let waitingPriority = ticket.waitingPriority {
 				state.removeWaitingTask(at: waitingPriority)
 				ticket.waitingPriority = nil
+			}
+			ticket.hasBegun = true
+			// Every earlier turn has ended, so this ticket holds the current turn. Waiting tasks may have asked to
+			// escalate this ticket's task before it was registered, and `register(escalation:for:)` leaves those
+			// escalations to the task until its turn begins.
+			return state.holderPriority
+		}
+		// Escalate only after releasing the lock. This task has no escalation handlers of its own yet, so escalating it
+		// runs only handlers that this code installed, and none of them is active here.
+		if let priority, #available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *) {
+			withUnsafeCurrentTask { task in
+				task?.escalatePriority(to: priority)
 			}
 		}
 	}
@@ -311,6 +327,8 @@ struct Turn: Sendable {
 
 /// The state of one turn. Every property is guarded by the lock of the `Turns` instance that reserved the ticket.
 final class Ticket: @unchecked Sendable {
+	/// Whether the turn has begun.
+	var hasBegun = false
 	/// Whether the turn has ended.
 	var hasEnded = false
 	/// The ticket reserved after this one, while this ticket's turn has not ended.
