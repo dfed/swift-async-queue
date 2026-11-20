@@ -141,7 +141,14 @@ final class Turns: Sendable {
 			return state.holder === ticket ? state.holderPriority : nil
 		}
 		if let priority {
-			escalate(priority)
+			// The task may already be running its operation. The code that registers a task is the code that enqueues it,
+			// which may hold a lock, or the runtime's lock on another task, that the operation's escalation handlers take.
+			// Escalating a task runs its escalation handlers on the escalating thread, so escalate from a new task so that
+			// those handlers never run on this thread. If the task's turn has not begun when the new task runs, the
+			// escalation also makes the task begin its turn sooner.
+			Task.detached(priority: priority) {
+				escalate(priority)
+			}
 		}
 	}
 
@@ -157,10 +164,22 @@ final class Turns: Sendable {
 				await wait(for: previousTicket, as: ticket, recordingPriority: false)
 			}
 		}
-		state.withLock { state in
+		let priority = state.withLock { state -> TaskPriority? in
 			if let waitingPriority = ticket.waitingPriority {
 				state.removeWaitingTask(at: waitingPriority)
 				ticket.waitingPriority = nil
+			}
+			// Every earlier turn has ended, so this ticket holds the current turn. Waiting tasks may have asked to
+			// escalate this ticket's task before it was registered, and the new task that registering it creates to
+			// apply those escalations may not have run yet.
+			return state.holderPriority
+		}
+		// Escalate this task now, so that it takes its turn at that priority even if that new task has not run yet.
+		// Escalate only after releasing the lock. This task has no escalation handlers of its own yet, so escalating it
+		// runs only handlers that this code installed, and none of them is active here.
+		if let priority, #available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *) {
+			withUnsafeCurrentTask { task in
+				task?.escalatePriority(to: priority)
 			}
 		}
 	}
@@ -199,7 +218,10 @@ final class Turns: Sendable {
 		var lastTicket: Ticket?
 		/// The earliest ticket whose turn has not ended, if any.
 		var holder: Ticket?
-		/// The priority to which the holder's task has been escalated on behalf of waiting tasks.
+		/// The priority to which waiting tasks have asked to escalate the holder's task.
+		///
+		/// A holder's task that is not yet registered is escalated to this priority from a new task once it is registered.
+		/// The task also escalates itself to this priority as its turn begins, in case that new task has not run yet.
 		var holderPriority: TaskPriority?
 		/// The number of tasks waiting for their turn, by the raw value of their priority.
 		var waitingTaskCounts = [UInt8: Int]()
@@ -222,7 +244,7 @@ final class Turns: Sendable {
 		mutating func escalateHolder(to priority: TaskPriority) -> (@Sendable () -> Void)? {
 			guard let holder, holderPriority.map({ $0 < priority }) ?? true else { return nil }
 			holderPriority = priority
-			// If the holder's task is not yet registered, registering it applies `holderPriority`.
+			// If the holder's task is not yet registered, it is escalated to `holderPriority` later. See `holderPriority`.
 			guard let escalate = holder.escalate else { return nil }
 			return { escalate(priority) }
 		}
