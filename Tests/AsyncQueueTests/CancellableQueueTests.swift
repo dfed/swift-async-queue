@@ -749,26 +749,29 @@ struct CancellableQueueTests {
 		// Neither task is running once this call returns, so cancelling the first task never makes it wait for its own
 		// status lock.
 		executor.runUntilIdle()
-		await withUnsafeContinuation { continuation in
-			// Escalate the waiting task on a thread of its own, and only then cancel the queue's tasks, so that nothing waits
-			// for a thread from the cooperative thread pool while the first task's cancellation handler holds the first
-			// task's status lock. A thread from the pool may wait for that lock for a moment, but the thread that holds it
-			// never needs the pool.
-			DispatchQueue(label: "escalateWaitingTask").async {
-				handlerRunning.wait()
-				// Only the waiting task's escalation handler can deliver this escalation. If the handler escalated the first
-				// task before returning, it would wait for the first task's status lock, which the first task's cancellation
-				// handler holds until this call returns, and this test would never finish.
-				waitingTask.escalatePriority(to: .high)
-				waitingTaskEscalated.signal()
-				continuation.resume()
-			}
-			// Cancel the queue's tasks on a thread of their own, since the first task's cancellation handler blocks that
-			// thread.
-			DispatchQueue(label: "cancelTasks").async {
-				systemUnderTest.cancelTasks()
-			}
+		let escalationDelivered = Semaphore()
+		// Escalate the waiting task on a thread of its own, and only then cancel the queue's tasks, so that nothing waits
+		// for a thread from the cooperative thread pool while the first task's cancellation handler holds the first
+		// task's status lock. A thread from the pool may wait for that lock for a moment, but the thread that holds it
+		// never needs the pool.
+		DispatchQueue(label: "escalateWaitingTask").async {
+			handlerRunning.wait()
+			// Only the waiting task's escalation handler can deliver this escalation. If the handler escalated the first
+			// task before returning, it would wait for the first task's status lock, which the first task's cancellation
+			// handler holds until this call returns, and this test would never finish.
+			waitingTask.escalatePriority(to: .high)
+			waitingTaskEscalated.signal()
+			// Resume the test through an actor rather than from this thread. Thread Sanitizer can miss that this
+			// thread's work happens before the test continues when a continuation is resumed before the test suspends
+			// on it.
+			Task { await escalationDelivered.signal() }
 		}
+		// Cancel the queue's tasks on a thread of their own, since the first task's cancellation handler blocks that
+		// thread.
+		DispatchQueue(label: "cancelTasks").async {
+			systemUnderTest.cancelTasks()
+		}
+		await escalationDelivered.wait()
 		await firstTaskAllowedToContinue.signal()
 		// Run the first task until it leaves the executor, and the waiting task once the first task's turn ends. The first
 		// task reports its priority before its turn ends.
